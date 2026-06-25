@@ -372,28 +372,37 @@ function switchAuth(tab){
   document.getElementById('auth-register').style.display = tab==='register'?'':'none';
   document.querySelectorAll('#auth-tab-bar .tab').forEach((t,i)=>t.classList.toggle('active',(i===0&&tab==='login')||(i===1&&tab==='register')));
 }
-function doLogin(){
-  const e=document.getElementById('login-email').value,p=document.getElementById('login-pass').value;
-  if(!e||!p)return toast('Preencha e-mail e senha','error');
-  loginSuccess({name:'João da Silva',email:e,initials:'J'});
+async function doLogin() {
+    const e = document.getElementById('login-email').value;
+    const p = document.getElementById('login-pass').value;
+    if (!e || !p) return toast('Preencha e-mail e senha', 'error');
+
+    try {
+        const response = await fetch('https://mei-facil-production.up.railway.app/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: e, password: p })
+        });
+        
+        const data = await response.json();
+        if (!response.ok) return toast(data.error || 'Erro ao fazer login', 'error');
+
+        localStorage.setItem('mei_token', data.token);
+        loginSuccess(data.user);
+        
+        // Carrega os dados reais do banco após logar
+        if (typeof carregarDadosDoServidor === 'function') await carregarDadosDoServidor();
+    } catch (err) {
+        toast('Erro ao conectar com o servidor', 'error');
+    }
 }
-function demoLogin(){loginSuccess({name:'Demo MEI',email:'demo@meifacil.com.br',initials:'D'});}
-function doRegister(){
-  const n=document.getElementById('reg-name').value,e=document.getElementById('reg-email').value,p=document.getElementById('reg-pass').value;
-  if(!n||!e||!p)return toast('Preencha todos os campos','error');
-  if(p.length<8)return toast('Senha deve ter no mínimo 8 caracteres','error');
-  loginSuccess({name:n,email:e,initials:n[0].toUpperCase()});
+
+function demoLogin() {
+    toast('Use o formulário para criar uma conta real ou logar!', 'info');
 }
-function loginSuccess(user){
-  state.user=user;
-  localStorage.setItem('mei_token',btoa(JSON.stringify({user,exp:Date.now()+86400000})));
-  document.getElementById('auth-page').style.display='none';
-  document.getElementById('app').style.display='flex';
-  document.getElementById('user-badge').textContent=user.initials;
-  updateTopbarDate();
-  navigate('dashboard');
-  toast(`Bem-vindo(a), ${user.name.split(' ')[0]}! 👋`,'success');
-}
+
+async function doRegister() {
+    const n = document.getElementById('
 function logout(){
   localStorage.removeItem('mei_token');
   state.user=null;
