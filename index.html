@@ -246,6 +246,55 @@ input:focus,select:focus,textarea:focus{border-color:var(--blue-l)}
 <div class="toast" id="toast"></div>
 
 <script>
+  // 🔗 Conexão com o Backend no Railway
+const API_URL = 'https://mei-facil-production.up.railway.app';
+
+// Função auxiliar para fazer requisições seguras ao servidor
+async function apiFetch(endpoint, options = {}) {
+    const token = localStorage.getItem('mei_token');
+    options.headers = {
+        'Content-Type': 'application/json',
+        ...options.headers
+    };
+    if (token) {
+        options.headers['Authorization'] = `Bearer ${token}`;
+    }
+    const response = await fetch(`${API_URL}${endpoint}`, options);
+    if (response.status === 401) {
+        localStorage.removeItem('mei_token');
+        alert('Sessão expirada. Por favor, faça login novamente.');
+        window.location.reload();
+    }
+    return response;
+}
+
+// Função para carregar todos os dados do Banco de Dados para a tela
+async function carregarDadosDoServidor() {
+    try {
+        const [resClientes, resProdutos, resVendas, resDashboard] = await Promise.all([
+            apiFetch('/api/clients'),
+            apiFetch('/api/products'),
+            apiFetch('/api/sales'),
+            apiFetch('/api/reports/dashboard')
+        ]);
+
+        if (resClientes.ok) state.clients = await resClientes.json();
+        if (resProdutos.ok) state.products = await resProdutos.json();
+        if (resVendas.ok) state.sales = await resVendas.json();
+        
+        if (resDashboard.ok) {
+            const dash = await resDashboard.json();
+            // Aqui vamos atualizar os blocos do dashboard com os dados reais
+            console.log('Dados do dashboard carregados:', dash);
+        }
+
+        // Se o seu código tiver uma função global de renderizar a tela, chamamos ela aqui:
+        if (typeof render === 'function') render();
+        else if (typeof init === 'function') init();
+    } catch (error) {
+        console.error('Erro ao buscar dados do servidor:', error);
+    }
+}
 // ══════════════════════════════════════
 // STATE
 // ══════════════════════════════════════
