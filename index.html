@@ -244,53 +244,6 @@ input:focus,select:focus,textarea:focus{border-color:var(--blue-l)}
 <div class="toast" id="toast"></div>
 
 <script>
-// 🔗 Conexão com o Backend no Railway
-const API_URL = 'https://mei-facil-production.up.railway.app';
-
-// Função auxiliar para fazer requisições seguras ao servidor
-async function apiFetch(endpoint, options = {}) {
-    const token = localStorage.getItem('mei_token');
-    options.headers = {
-        'Content-Type': 'application/json',
-        ...options.headers
-    };
-    if (token) {
-        options.headers['Authorization'] = `Bearer ${token}`;
-    }
-    const response = await fetch(`${API_URL}${endpoint}`, options);
-    if (response.status === 401) {
-        localStorage.removeItem('mei_token');
-        alert('Sessão expirada. Por favor, faça login novamente.');
-        window.location.reload();
-    }
-    return response;
-}
-
-// Função para carregar todos os dados do Banco de Dados para a tela
-async function carregarDadosDoServidor() {
-    try {
-        const [resClientes, resProdutos, resVendas, resDashboard] = await Promise.all([
-            apiFetch('/api/clients'),
-            apiFetch('/api/products'),
-            apiFetch('/api/sales'),
-            apiFetch('/api/reports/dashboard')
-        ]);
-
-        if (resClientes.ok) state.clients = await resClientes.json();
-        if (resProdutos.ok) state.products = await resProdutos.json();
-        if (resVendas.ok) state.sales = await resVendas.json();
-        
-        if (resDashboard.ok) {
-            const dash = await resDashboard.json();
-            console.log('Dados do dashboard carregados:', dash);
-        }
-
-        if (typeof renderPage === 'function') renderPage(state.page);
-    } catch (error) {
-        console.error('Erro ao buscar dados do servidor:', error);
-    }
-}
-
 // ══════════════════════════════════════
 // STATE
 // ══════════════════════════════════════
@@ -308,7 +261,7 @@ const state = {
   user: null,
   page: 'dashboard',
   sidebarCollapsed: false,
-  payFees: { pix:0, debito:1.5, credito:2.99 },
+  payFees: { pix:0, debito:1.5, credito:2.99 }, // configurable fees %
   clients: [
     {id:1,name:'Maria Oliveira',cpf:'123.456.789-00',phone:'(67)99999-1111',email:'maria@email.com',city:'Campo Grande'},
     {id:2,name:'José Santos',cpf:'987.654.321-00',phone:'(67)98888-2222',email:'jose@email.com',city:'Dourados'},
@@ -361,17 +314,20 @@ const state = {
 // ══════════════════════════════════════
 // AUTH
 // ══════════════════════════════════════
+const API_URL = "https://mei-facil-production.up.railway.app";
+
 function switchAuth(tab){
-  document.getElementById('auth-login').style.display    = tab==='login'?'':'none';
-  document.getElementById('auth-register').style.display = tab==='register'?'':'none';
-  document.querySelectorAll('#auth-tab-bar .tab').forEach((t,i)=>t.classList.toggle('active',(i===0&&tab==='login')||(i===1&&tab==='register')));
+    document.getElementById('auth-login').style.display  = tab==='login'?'':'none';
+    document.getElementById('auth-register').style.display = tab==='register'?'':'none';
+    document.querySelectorAll('#auth-tab-bar .tab').forEach((t,i)=>t.classList.toggle('active',(i===0&&tab==='login')||(i===1&&tab==='register')));
 }
 
 async function doLogin() {
     const e = document.getElementById('login-email').value;
     const p = document.getElementById('login-pass').value;
+    
     if (!e || !p) return toast('Preencha e-mail e senha', 'error');
-
+    
     try {
         const response = await fetch(`${API_URL}/api/auth/login`, {
             method: 'POST',
@@ -380,60 +336,80 @@ async function doLogin() {
         });
         
         const data = await response.json();
-        if (!response.ok) return toast(data.error || 'Erro ao fazer login', 'error');
-
+        
+        if (!response.ok) {
+            return toast(data.error || 'Erro ao fazer login', 'error');
+        }
+        
         localStorage.setItem('mei_token', data.token);
         loginSuccess(data.user);
-        
-        await carregarDadosDoServidor();
-    } catch (err) {
+    } catch (error) {
+        console.error(error);
         toast('Erro ao conectar com o servidor', 'error');
     }
 }
 
 function demoLogin() {
-    toast('Use o formulário para criar uma conta real ou logar!', 'info');
+    loginSuccess({name: 'Demo MEI', email: 'demo@meifacil.com.br', initials: 'D'});
 }
 
 async function doRegister() {
     const n = document.getElementById('reg-name').value;
     const e = document.getElementById('reg-email').value;
-    const c = document.getElementById('reg-cpf').value;
     const p = document.getElementById('reg-pass').value;
-
-    if (!n || !e || !p) return toast('Preencha todos os campos obrigatórios', 'error');
+    const c = document.getElementById('reg-cpf').value;
+    
+    if (!n || !e || !p) return toast('Preencha todos os campos', 'error');
     if (p.length < 8) return toast('Senha deve ter no mínimo 8 caracteres', 'error');
-
+    
     try {
         const response = await fetch(`${API_URL}/api/auth/register`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: n, email: e, password: p, cpf_cnpj: c })
+            body: JSON.stringify({ name: n, email: e, password: p, cpf: c })
         });
-
+        
         const data = await response.json();
-        if (!response.ok) return toast(data.error || 'Erro ao criar conta', 'error');
-
+        
+        if (!response.ok) {
+            return toast(data.error || 'Erro ao criar conta', 'error');
+        }
+        
         localStorage.setItem('mei_token', data.token);
         loginSuccess(data.user);
-        
-        await carregarDadosDoServidor();
-    } catch (err) {
+    } catch (error) {
+        console.error(error);
         toast('Erro ao conectar com o servidor', 'error');
     }
 }
 
-function loginSuccess(user) {
+function loginSuccess(user){
     state.user = user;
-    const initials = user.name ? user.name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2) : 'MEI';
-    user.initials = initials;
-
+    
     document.getElementById('auth-page').style.display = 'none';
     document.getElementById('app').style.display = 'flex';
-    document.getElementById('user-badge').textContent = user.initials;
     
-    updateTopbarDate();
-    navigate('dashboard');
+    const userBadge = document.getElementById('user-badge');
+    if (userBadge) {
+        userBadge.textContent = user.initials || user.name.charAt(0).toUpperCase();
+    }
+    
+    if (typeof updateTopbarDate === 'function') updateTopbarDate();
+    
+    if (typeof init === 'function') {
+        init();
+    } else if (typeof render === 'function') {
+        render();
+    }
+    
+    if (typeof navigate === 'function') {
+        navigate('dashboard');
+    } else if (typeof showPage === 'function') {
+        showPage('dashboard');
+    } else if (typeof changeTab === 'function') {
+        changeTab('dashboard');
+    }
+    
     toast(`Bem-vindo(a), ${user.name.split(' ')[0]}! 👋`, 'success');
 }
 
@@ -443,6 +419,12 @@ function logout(){
   document.getElementById('app').style.display='none';
   document.getElementById('auth-page').style.display='grid';
 }
+
+(function(){
+  const raw=localStorage.getItem('mei_token');
+  if(!raw)return;
+  try{const d=JSON.parse(atob(raw));if(d.exp>Date.now())loginSuccess(d.user);}catch(e){}
+})();
 
 // ══════════════════════════════════════
 // NAV
@@ -472,6 +454,7 @@ function updateTopbarDate(){
   const d=new Date();
   document.getElementById('topbar-date').textContent=d.toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'short',year:'numeric'});
 }
+font-size:14px;font-weight:600;box-shadow:var(--shadow);transform:translateY(80px);opacity:0;transition:all .3s ease;display:flex;align-items:center;gap:8px}
 function toast(msg,type='success'){
   const el=document.getElementById('toast');
   el.textContent=(type==='success'?'✅ ':type==='error'?'❌ ':'ℹ️ ')+msg;
@@ -490,7 +473,7 @@ function closeModal(e){
 }
 function _closeModal(){closeModal({target:document.getElementById('modal-overlay')});}
 function payIcon(m){return PAY_METHODS[m]?.icon||'💳';}
-function payLabel(m){return PAY_METHODS[m]?.label||m;}
+function payLabel(m={}){return PAY_METHODS[m]?.label||m;}
 
 // ══════════════════════════════════════
 // RENDER ROUTER
@@ -521,6 +504,7 @@ function renderDashboard(el){
   const vals=[5200,6800,4900,7200,8100,totalRevenue];
   const maxVal=Math.max(...vals);
 
+  // Payment method breakdown
   const payBreakdown={};
   paidSales.forEach(s=>{payBreakdown[s.payMethod]=(payBreakdown[s.payMethod]||0)+s.netTotal;});
   const totalFees=paidSales.reduce((a,s)=>a+s.feeValue,0);
@@ -587,45 +571,685 @@ function renderDashboard(el){
     </div>
   `;
 
-  const barEl=document.getElementById('bar-chart');
-  if(barEl)barEl.innerHTML=months.map((m,i)=>{
-    const h=Math.max(8,(vals[i]/maxVal)*100);
-    const color=i===5?'var(--blue-l)':'var(--border)';
-    return `<div class="bar-wrap"><span class="bar-val">${i===5?R(vals[i]).replace('R$ ',''):'R$'+Math.round(vals[i]/1000)+'k'}</span><div class="bar-col" style="height:${h}%;background:${color}"></div><span class="bar-label">${m}</span></div>`;
-  }).join('');
+  // Bar chart rendering
+  const barEl = document.getElementById('bar-chart');
+  if (barEl) {
+    barEl.innerHTML = months.map((m, i) => {
+      const h = maxVal > 0 ? (vals[i] / maxVal) * 85 : 0;
+      return `
+        <div class="bar-wrap">
+          <span class="bar-val">${R(vals[i]).replace('R$ ','').replace(',00','')}</span>
+          <div class="bar-col" style="height:${h}%; background:${i===5?'var(--green-l)':'var(--blue-l)'}"></div>
+          <span class="bar-label">${m}</span>
+        </div>`;
+    }).join('');
+  }
 }
 
-// Funções dummy necessárias que o roteador de páginas vai chamar se clicado
-function renderClients(el) { el.innerHTML = '<h2>Clientes</h2><p>Módulo de Clientes ativo.</p>'; }
-function renderProducts(el) { el.innerHTML = '<h2>Produtos</h2><p>Módulo de Produtos ativo.</p>'; }
-function renderSales(el) { el.innerHTML = '<h2>Vendas</h2><p>Módulo de Vendas ativo.</p>'; }
-function renderCashflow(el) { el.innerHTML = '<h2>Fluxo de Caixa</h2><p>Módulo de Fluxo de Caixa ativo.</p>'; }
-function renderReports(el) { el.innerHTML = '<h2>Relatórios</h2><p>Módulo de Relatórios ativo.</p>'; }
-function renderSettings(el) { el.innerHTML = '<h2>Configurações</h2><button class="btn btn-danger" onclick="logout()">Sair da Conta</button>'; }
-function openEditRevenueModal() { alert('Função para ajustar faturamento anual antigo.'); }
+function openEditRevenueModal(){
+  let hHtml = state.revenueHistory.map(h=>`
+    <div class="history-entry ${h.action==='edit'?'edit':'create'}">
+      <strong>${new Date(h.ts).toLocaleString('pt-BR')}</strong> - Motivo: <em>${h.reason}</em><br/>
+      Alterou de <del>${R(h.before||0)}</del> para <strong>${R(h.after)}</strong> (por ${h.user})
+    </div>`).join('');
 
-// Inicialização automática inteligente
-window.addEventListener('DOMContentLoaded', async () => {
-    const token = localStorage.getItem('mei_token');
-    if (token) {
-        try {
-            // Tenta decodificar o token fictício anterior ou JWT válido
-            let userObj = { name: "Usuário MEI" };
-            try {
-                const base64Url = token.split('.')[1];
-                if(base64Url) {
-                    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-                    userObj = JSON.parse(window.atob(base64)).user || JSON.parse(window.atob(base64));
-                }
-            } catch(e){}
+  openModal(`
+    <div class="modal-title">✏️ Corrigir Faturamento Acumulado (Ano)</div>
+    <div class="form-group">
+      <label>Valor atual acumulado faturado</label>
+      <input type="number" step="0.01" id="rev-val" value="${state.yearRevenue}"/>
+    </div>
+    <div class="form-group">
+      <label>Motivo da alteração / Ajuste</label>
+      <input type="text" id="rev-reason" placeholder="Ex: Correção de notas emitidas em Jan, inserção retroativa..."/>
+    </div>
+    <div style="margin-top:12px; max-height:160px; overflow-y:auto; border:1px solid var(--border); padding:8px; border-radius:6px">
+      <div style="font-size:12px; font-weight:600; color:var(--muted); margin-bottom:6px">📋 Histórico de Ajustes:</div>
+      ${hHtml}
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-ghost" onclick="_closeModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveRevenueAdjustment()">Salvar Ajuste</button>
+    </div>
+  `);
+}
 
-            loginSuccess(userObj);
-            await carregarDadosDoServidor();
-        } catch (e) {
-            console.error("Erro na inicialização:", e);
-        }
+function saveRevenueAdjustment(){
+  const val = parseFloat(document.getElementById('rev-val').value);
+  const reason = document.getElementById('rev-reason').value.trim();
+  if(isNaN(val) || val < 0) return toast('Insira um valor válido','error');
+  if(!reason) return toast('Insira o motivo do ajuste para fins de auditoria','error');
+
+  state.revenueHistory.push({
+    ts: nowISO(),
+    action: 'edit',
+    before: state.yearRevenue,
+    after: val,
+    reason: reason,
+    user: state.user?.name || 'Usuário'
+  });
+
+  state.yearRevenue = val;
+  _closeModal();
+  renderPage(state.page);
+  toast('Faturamento anual reajustado com sucesso!');
+}
+
+// ══════════════════════════════════════
+// CLIENTS
+// ══════════════════════════════════════
+function renderClients(el){
+  el.innerHTML=`
+    <div class="section-header">
+      <span class="section-title">👥 Cadastro de Clientes (${state.clients.length})</span>
+      <button class="btn btn-primary btn-sm" onclick="openClientModal()">+ Novo Cliente</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>ID</th><th>Nome</th><th>CPF</th><th>Telefone</th><th>E-mail</th><th>Cidade</th><th>Ações</th></tr></thead>
+        <tbody>
+          ${state.clients.map(c=>`
+            <tr>
+              <td>#${c.id}</td>
+              <td style="font-weight:600">${c.name}</td>
+              <td>${c.cpf||'—'}</td>
+              <td>${c.phone||'—'}</td>
+              <td>${c.email||'—'}</td>
+              <td>${c.city||'—'}</td>
+              <td>
+                <button class="btn btn-ghost btn-sm" onclick="openClientModal(${c.id})">✏️</button>
+                <button class="btn btn-danger btn-sm" onclick="deleteClient(${c.id})">🗑️</button>
+              </td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function openClientModal(id=null){
+  const c = id ? state.clients.find(x=>x.id===id) : {name:'',cpf:'',phone:'',email:'',city:''};
+  openModal(`
+    <div class="modal-title">${id?'✏️ Editar Cliente':'👥 Novo Cliente'}</div>
+    <div class="form-group"><label>Nome Completo *</label><input type="text" id="c-name" value="${c.name}"/></div>
+    <div class="form-row">
+      <div class="form-group"><label>CPF</label><input type="text" id="c-cpf" value="${c.cpf}" placeholder="000.000.000-00"/></div>
+      <div class="form-group"><label>Telefone</label><input type="text" id="c-phone" value="${c.phone}" placeholder="(67) 99999-0000"/></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>E-mail</label><input type="email" id="c-email" value="${c.email}"/></div>
+      <div class="form-group"><label>Cidade</label><input type="text" id="c-city" value="${c.city}"/></div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-ghost" onclick="_closeModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveClient(${id})">Salvar</button>
+    </div>
+  `);
+}
+
+function saveClient(id){
+  const n=document.getElementById('c-name').value.trim();
+  if(!n) return toast('Nome é obrigatório','error');
+  const payload={
+    name:n,
+    cpf:document.getElementById('c-cpf').value.trim(),
+    phone:document.getElementById('c-phone').value.trim(),
+    email:document.getElementById('c-email').value.trim(),
+    city:document.getElementById('c-city').value.trim()
+  };
+  if(id){
+    Object.assign(state.clients.find(x=>x.id===id), payload);
+    toast('Cliente atualizado!');
+  }else{
+    payload.id = state.clients.length ? Math.max(...state.clients.map(x=>x.id))+1 : 1;
+    state.clients.push(payload);
+    toast('Cliente adicionado!');
+  }
+  _closeModal();
+  renderPage('clients');
+}
+
+function deleteClient(id){
+  if(!confirm('Deseja excluir este cliente?'))return;
+  state.clients=state.clients.filter(x=>x.id!==id);
+  renderPage('clients');
+  toast('Cliente removido!','error');
+}
+
+// ══════════════════════════════════════
+// PRODUCTS & SERVICES
+// ══════════════════════════════════════
+function renderProducts(el){
+  el.innerHTML=`
+    <div class="section-header">
+      <span class="section-title">📦 Catálogo de Produtos & Serviços (${state.products.length})</span>
+      <button class="btn btn-primary btn-sm" onclick="openProductModal()">+ Novo Item</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Tipo</th><th>Nome</th><th>Custo</th><th>Margem</th><th>Preço Venda</th><th>Estoque</th><th>Ações</th></tr></thead>
+        <tbody>
+          ${state.products.map(p=>`
+            <tr>
+              <td><span class="badge ${p.type==='product'?'badge-blue':'badge-purple'}">${p.type==='product'?'📦 Prod':'🛠️ Serv'}</span></td>
+              <td style="font-weight:600">${p.name}</td>
+              <td>${R(p.cost)}</td>
+              <td><span style="color:var(--muted)">${p.margin}%</span></td>
+              <td style="font-weight:600;color:var(--green-l)">${R(p.price)}</td>
+              <td>${p.type==='product'?`<span class="${p.stock<=10?'stock-low':'stock-ok'}">${p.stock} ${p.unit}</span>`:'—'}</td>
+              <td>
+                <button class="btn btn-ghost btn-sm" onclick="openProductModal(${p.id})">✏️</button>
+                <button class="btn btn-danger btn-sm" onclick="deleteProduct(${p.id})">🗑️</button>
+              </td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function openProductModal(id=null){
+  const p = id ? state.products.find(x=>x.id===id) : {name:'',type:'product',cost:'',margin:'',price:'',unit:'un',stock:''};
+  openModal(`
+    <div class="modal-title">${id?'✏️ Editar Item':'📦 Novo Item do Catálogo'}</div>
+    <div class="form-row">
+      <div class="form-group"><label>Tipo de Item</label>
+        <select id="p-type" onchange="toggleStockField(this.value)">
+          <option value="product" ${p.type==='product'?'selected':''}>Produto (com estoque)</option>
+          <option value="service" ${p.type==='service'?'selected':''}>Serviço / Mão de Obra</option>
+        </select>
+      </div>
+      <div class="form-group"><label>Nome do Item *</label><input type="text" id="p-name" value="${p.name}"/></div>
+    </div>
+    <div class="form-row-3">
+      <div class="form-group"><label>Custo Base (R$) *</label><input type="number" step="0.01" id="p-cost" value="${p.cost}" oninput="calcPriceByMargin()"/></div>
+      <div class="form-group"><label>Margem (%)</label><input type="number" id="p-margin" value="${p.margin}" oninput="calcPriceByMargin()"/></div>
+      <div class="form-group"><label>Preço Venda (R$) *</label><input type="number" step="0.01" id="p-price" value="${p.price}" oninput="calcMarginByPrice()"/></div>
+    </div>
+    <div class="form-row" id="stock-row" style="display:${p.type==='service'?'none':''}">
+      <div class="form-group"><label>Unidade</label><input type="text" id="p-unit" value="${p.unit}" placeholder="un, kg, pct..."/></div>
+      <div class="form-group"><label>Estoque Inicial</label><input type="number" id="p-stock" value="${p.stock||0}"/></div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-ghost" onclick="_closeModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveProduct(${id})">Salvar Item</button>
+    </div>
+  `);
+}
+
+function toggleStockField(v){ document.getElementById('stock-row').style.display=v==='service'?'none':''; }
+function calcPriceByMargin(){
+  const c = parseFloat(document.getElementById('p-cost').value)||0, m = parseFloat(document.getElementById('p-margin').value)||0;
+  if(c>0) document.getElementById('p-price').value = (c * (1 + m/100)).toFixed(2);
+}
+function calcMarginByPrice(){
+  const c = parseFloat(document.getElementById('p-cost').value)||0, p = parseFloat(document.getElementById('p-price').value)||0;
+  if(c>0 && p>0) document.getElementById('p-margin').value = (((p - c) / c) * 100).toFixed(0);
+}
+
+function saveProduct(id){
+  const n=document.getElementById('p-name').value.trim(), t=document.getElementById('p-type').value;
+  const cost=parseFloat(document.getElementById('p-cost').value)||0, price=parseFloat(document.getElementById('p-price').value)||0;
+  if(!n||cost<=0||price<=0) return toast('Preencha os campos obrigatórios corretamente','error');
+
+  const payload={
+    name:n, type:t, cost:cost, price:price,
+    margin: parseInt(document.getElementById('p-margin').value)||0,
+    unit: t==='product'?document.getElementById('p-unit').value:'un',
+    stock: t==='product'?parseInt(document.getElementById('p-stock').value)||0:null
+  };
+
+  if(id){
+    Object.assign(state.products.find(x=>x.id===id), payload);
+    toast('Catálogo atualizado!');
+  }else{
+    payload.id = state.products.length ? Math.max(...state.products.map(x=>x.id))+1 : 1;
+    state.products.push(payload);
+    toast('Item inserido no catálogo!');
+  }
+  _closeModal();
+  renderPage('products');
+}
+
+function deleteProduct(id){
+  if(!confirm('Deseja excluir este item do catálogo?'))return;
+  state.products=state.products.filter(x=>x.id!==id);
+  renderPage('products');
+  toast('Item excluído!','error');
+}
+
+// ══════════════════════════════════════
+// SALES (🛒 CARRINHO AVANÇADO + OPERADORA)
+// ══════════════════════════════════════
+let cart = [];
+let selectedPayMethod = 'dinheiro';
+
+function renderSales(el){
+  el.innerHTML=`
+    <div style="display:grid;grid-template-columns:1.2fr 1fr;gap:20px;align-items:start">
+      <div class="card">
+        <div class="section-title" style="margin-bottom:16px">🛒 Nova Venda / Orçamento</div>
+        <div class="form-group">
+          <label>Cliente (Opcional)</label>
+          <select id="s-client">
+            <option value="">— Consumidor final —</option>
+            ${state.clients.map(c=>`<option value="${c.id}">${c.name} (${c.city})</option>`).join('')}
+          </select>
+        </div>
+        
+        <label>Produtos / Serviços no Carrinho</label>
+        <div class="sale-items-list">
+          <div class="sale-item-row sale-item-header">
+            <div>Item</div><div>Qtd</div><div>Preço Un.</div><div>Subtotal</div><div></div>
+          </div>
+          <div id="cart-rows"></div>
+          <div class="sale-item-add">
+            <select id="cart-add-select" style="flex:2">
+              <option value="">➕ Selecione um produto/serviço para adicionar...</option>
+              ${state.products.map(p=>`<option value="${p.id}">${p.name} - ${R(p.price)} (${p.type==='product'?'Estoque: '+p.stock:'Serviço'})</option>`).join('')}
+            </select>
+            <input type="number" id="cart-add-qty" value="1" min="1" style="width:70px"/>
+            <button class="btn btn-success btn-sm" onclick="addItemToCart()">Adicionar</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card calc-green">
+        <div class="section-title" style="margin-bottom:16px">💳 Fechamento & Taxas Operadora</div>
+        <label>Forma de Pagamento</label>
+        <div class="pay-methods">
+          ${Object.entries(PAY_METHODS).map(([k,m])=>`
+            <div class="pay-pill ${k==='pix'||k==='debito'||k==='credito'?'green-pay':''} ${selectedPayMethod===k?'active':''}" onclick="setPayMethod('${k}')">
+              ${m.icon} ${m.label}
+            </div>`).join('')}
+        </div>
+
+        <div id="fee-info-box" style="margin-bottom:14px"></div>
+
+        <div class="calc-box" style="background:#fff">
+          <div class="calc-row"><span>Total Bruto dos Itens:</span><strong id="v-bruto">R$ 0,00</strong></div>
+          <div class="calc-row" style="color:var(--red)"><span>Desconto taxas maquininha (<span id="v-fee-pct">0</span>%):</span><strong id="v-fee-val">- R$ 0,00</strong></div>
+          <div class="calc-row total" style="color:var(--green)"><span>Total Líquido a Receber:</span><span id="v-liquido" style="font-size:20px">R$ 0,00</span></div>
+        </div>
+
+        <div class="form-row" style="margin-top:16px">
+          <div class="form-group"><label>Data da Competência</label><input type="date" id="s-date" value="${nowISO().split('T')[0]}"/></div>
+          <div class="form-group"><label>Status da Venda</label>
+            <select id="s-status">
+              <option value="paid">✅ Pago (Lança Caixa)</option>
+              <option value="pending">⏳ Pendente / Orçamento</option>
+            </select>
+          </div>
+        </div>
+
+        <button class="btn btn-primary" style="width:100%;padding:12px;margin-top:10px" onclick="submitSale()">🚀 Concluir e Registrar Venda</button>
+      </div>
+    </div>
+
+    <div class="section-header" style="margin-top:32px">
+      <span class="section-title">📋 Histórico de Vendas Realizadas</span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Data</th><th>Cliente</th><th>Itens faturados</th><th>Pagamento</th><th>Bruto</th><th>Líquido Caixa</th><th>Status</th><th>Ações</th></tr></thead>
+        <tbody>
+          ${[...state.sales].reverse().map(s=>`
+            <tr>
+              <td>${fmt(s.date)}</td>
+              <td style="font-weight:600">${s.clientName||'<span style="color:var(--muted)">Consumidor final</span>'}</td>
+              <td style="font-size:13px;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${s.items.map(i=>`${i.qty}x ${i.name}`).join(', ')}">
+                ${s.items.map(i=>`${i.qty}x ${i.name}`).join(', ')}
+              </td>
+              <td>${payIcon(s.payMethod)} ${payLabel(s.payMethod)} ${s.feeValue > 0 ? `<small style="color:var(--red)">(-${s.feePct}%)</small>`:''}</td>
+              <td>${R(s.total)}</td>
+              <td style="font-weight:600;color:var(--green-l)">${R(s.netTotal)}</td>
+              <td><span class="badge ${s.status==='paid'?'badge-green':'badge-amber'}">${s.status==='paid'?'✅ Pago':'⏳ Pendente'}</span></td>
+              <td>
+                <button class="btn btn-danger btn-sm" onclick="deleteSale(${s.id})">🗑️</button>
+              </td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+  updateCartUI();
+}
+
+function setPayMethod(m){ selectedPayMethod=m; updateCartUI(); }
+
+function addItemToCart(){
+  const select = document.getElementById('cart-add-select');
+  const pId = parseInt(select.value);
+  const qty = parseInt(document.getElementById('cart-add-qty').value)||1;
+  if(!pId) return toast('Selecione um item do catálogo','error');
+  
+  const prod = state.products.find(x=>x.id===pId);
+  const existing = cart.find(x=>x.productId===pId);
+  
+  if(existing){
+    existing.qty += qty;
+    existing.subtotal = existing.qty * existing.unitPrice;
+  }else{
+    cart.push({
+      productId: prod.id,
+      name: prod.name,
+      qty: qty,
+      unitPrice: prod.price,
+      cost: prod.cost,
+      subtotal: qty * prod.price
+    });
+  }
+  select.value = "";
+  updateCartUI();
+}
+
+function removeCartItem(idx){ cart.splice(idx,1); updateCartUI(); }
+
+function updateCartUI(){
+  const container = document.getElementById('cart-rows');
+  if(!container) return;
+
+  if(cart.length===0){
+    container.innerHTML = `<div style="text-align:center;padding:16px;color:var(--muted);font-size:13px">Carrinho vazio</div>`;
+  }else{
+    container.innerHTML = cart.map((item, idx)=>`
+      <div class="sale-item-row">
+        <div style="font-weight:600">${item.name}</div>
+        <div><strong>${item.qty}</strong></div>
+        <td>${R(item.unitPrice)}</td>
+        <div class="item-subtotal">${R(item.subtotal)}</div>
+        <div><button class="remove-item-btn" onclick="removeCartItem(${idx})">×</button></div>
+      </div>`).join('');
+  }
+
+  // Calculate fields
+  const totalBruto = cart.reduce((a,i)=>a+i.subtotal,0);
+  const feePct = PAY_METHODS[selectedPayMethod].hasFee ? (state.payFees[selectedPayMethod]||0) : 0;
+  const feeVal = totalBruto * (feePct / 100);
+  const totalLiquido = totalBruto - feeVal;
+
+  document.getElementById('v-bruto').textContent = R(totalBruto);
+  document.getElementById('v-fee-pct').textContent = feePct;
+  document.getElementById('v-fee-val').textContent = `- ${R(feeVal)}`;
+  document.getElementById('v-liquido').textContent = R(totalLiquido);
+
+  const feeBox = document.getElementById('fee-info-box');
+  if(feePct>0){
+    feeBox.innerHTML = `<div class="fee-row">🏧 Esta operadora cobra <strong>${feePct}%</strong> nesta modalidade. Desconto de <strong>${R(feeVal)}</strong> retido na fonte.</div>`;
+  }else{
+    feeBox.innerHTML = "";
+  }
+
+  // Update pills classes
+  document.querySelectorAll('.pay-pill').forEach(el=>{
+    const label = el.textContent.trim();
+    el.classList.toggle('active', label.includes(PAY_METHODS[selectedPayMethod].label));
+  });
+}
+
+function submitSale(){
+  if(cart.length===0) return toast('Adicione pelo menos um item ao carrinho','error');
+  const cId = parseInt(document.getElementById('s-client').value);
+  const status = document.getElementById('s-status').value;
+  const date = document.getElementById('s-date').value;
+
+  const client = state.clients.find(x=>x.id===cId);
+  const totalBruto = cart.reduce((a,i)=>a+i.subtotal,0);
+  const totalCost = cart.reduce((a,i)=>(a+(i.cost * i.qty)),0);
+  const feePct = PAY_METHODS[selectedPayMethod].hasFee ? (state.payFees[selectedPayMethod]||0) : 0;
+  const feeVal = totalBruto * (feePct / 100);
+  const totalLiquido = totalBruto - feeVal;
+  const profit = totalLiquido - totalCost;
+
+  const saleId = state.sales.length ? Math.max(...state.sales.map(x=>x.id))+1 : 1;
+
+  const salePayload = {
+    id: saleId,
+    date: date,
+    clientId: cId||null,
+    clientName: client ? client.name : null,
+    items: [...cart],
+    total: totalBruto,
+    profit: profit,
+    status: status,
+    payMethod: selectedPayMethod,
+    feePct: feePct,
+    feeValue: feeVal,
+    netTotal: totalLiquido
+  };
+
+  state.sales.push(salePayload);
+
+  if(status === 'paid'){
+    state.cashflow.push({
+      id: state.cashflow.length ? Math.max(...state.cashflow.map(x=>x.id))+1 : 1,
+      date: date,
+      desc: `Venda #${saleId} — ${cart.length===1?cart[0].name: cart.length+' itens'}`,
+      type: 'in',
+      value: totalLiquido,
+      saleId: saleId,
+      editable: true,
+      history: []
+    });
+    state.yearRevenue += totalLiquido;
+    
+    // Deduct stock
+    cart.forEach(item=>{
+      const p = state.products.find(x=>x.id===item.productId);
+      if(p && p.type==='product'){
+        p.stock = Math.max(0, p.stock - item.qty);
+      }
+    });
+  }
+
+  cart = [];
+  toast('Venda registrada e processada com sucesso!');
+  renderPage('sales');
+}
+
+function deleteSale(id){
+  if(!confirm('Deseja estornar e excluir esta venda? O faturamento anual e lançamentos vinculados no caixa serão recalculados.'))return;
+  const sale = state.sales.find(x=>x.id===id);
+  if(sale && sale.status==='paid'){
+    state.yearRevenue -= sale.netTotal;
+    state.cashflow = state.cashflow.filter(c=>c.saleId !== id);
+    
+    // Devolve o estoque
+    sale.items.forEach(item=>{
+      const p = state.products.find(x=>x.id===item.productId);
+      if(p && p.type==='product'){
+        p.stock += item.qty;
+      }
+    });
+  }
+  state.sales = state.sales.filter(x=>x.id!==id);
+  renderPage('sales');
+  toast('Venda removida e caixa estornado!','error');
+}
+
+// ══════════════════════════════════════
+// CASH FLOW (FLUXO DE CAIXA COMPLETO COM AUDITORIA)
+// ══════════════════════════════════════
+function renderCashflow(el){
+  const totalIn = state.cashflow.filter(c=>c.type==='in').reduce((a,c)=>a+c.value,0);
+  const totalOut = state.cashflow.filter(c=>c.type==='out').reduce((a,c)=>a+c.value,0);
+  const balance = totalIn - totalOut;
+
+  el.innerHTML=`
+    <div class="cards-grid">
+      <div class="card card-metric"><div class="card-icon">📈</div><div class="card-label">Entradas Totais</div><div class="card-value green">${R(totalIn)}</div></div>
+      <div class="card card-metric"><div class="card-icon">📉</div><div class="card-label">Saídas / Despesas</div><div class="card-value red">${R(totalOut)}</div></div>
+      <div class="card card-metric"><div class="card-icon">⚖️</div><div class="card-label">Saldo em Caixa</div><div class="card-value ${balance>=0?'blue':'red'}">${R(balance)}</div></div>
+    </div>
+
+    <div class="section-header">
+      <span class="section-title">💰 Livro Caixa de Lançamentos</span>
+      <div style="display:flex;gap:10px">
+        <button class="btn btn-success btn-sm" onclick="openCashflowModal('in')">+ Receita Direta</button>
+        <button class="btn btn-danger btn-sm" onclick="openCashflowModal('out')">+ Despesa / Saída</button>
+      </div>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Data</th><th>Descrição do Lançamento</th><th>Tipo</th><th>Valor Monetário</th><th>Ações</th></tr></thead>
+        <tbody>
+          ${[...state.cashflow].reverse().map(c=>`
+            <tr>
+              <td>${fmt(c.date)}</td>
+              <td style="font-weight:600">
+                ${c.desc} ${c.saleId ? `<small style="color:var(--muted)">(Faturamento #${c.saleId})</small>`:''}
+              </td>
+              <td><span class="badge ${c.type==='in'?'badge-green':'badge-red'}">${c.type==='in'?'📥 Entrada':'📤 Saída'}</span></td>
+              <td style="font-weight:700;color:var(--${c.type==='in'?'green-l':'red-l'})">${c.type==='in'?'+':'-'} ${R(c.value)}</td>
+              <td>
+                <button class="btn btn-ghost btn-sm" onclick="openCashflowModal('${c.type}', ${c.id})">✏️</button>
+                <button class="btn btn-danger btn-sm" onclick="deleteCashflow(${c.id})">🗑️</button>
+              </td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function openCashflowModal(type, id=null){
+  const c = id ? state.cashflow.find(x=>x.id===id) : {date:nowISO().split('T')[0], desc:'', value:''};
+  
+  let auditHistoryHtml = "";
+  if(id && c.history && c.history.length > 0){
+    auditHistoryHtml = `
+      <div style="margin-top:14px; max-height:110px; overflow-y:auto; border:1px solid var(--border); padding:8px; border-radius:6px">
+        <div style="font-size:11px; font-weight:600; color:var(--muted); margin-bottom:4px">📝 Histórico de Revisões Deste Lançamento:</div>
+        ${c.history.map(h=>`<div class="history-entry edit" style="font-size:11px;padding:4px 8px"><strong>${new Date(h.ts).toLocaleString('pt-BR')}</strong>: Mudou de ${R(h.before)} p/ ${R(h.after)} (Motivo: ${h.reason})</div>`).join('')}
+      </div>`;
+  }
+
+  openModal(`
+    <div class="modal-title">${id?'✏️ Modificar Lançamento':'💰 Adicionar '+ (type==='in'?'Receita Direta':'Despesa / Saída')}</div>
+    <div class="form-group"><label>Descrição / Histórico do Lançamento *</label><input type="text" id="fl-desc" value="${c.desc}"/></div>
+    <div class="form-row">
+      <div class="form-group"><label>Data</label><input type="date" id="fl-date" value="${c.date}"/></div>
+      <div class="form-group"><label>Valor (R$) *</label><input type="number" step="0.01" id="fl-value" value="${c.value}"/></div>
+    </div>
+    ${id ? `<div class="form-group"><label>Justificativa do Ajuste / Erro *</label><input type="text" id="fl-reason" placeholder="Ex: Erro de digitação no cupom, valor alterado pelo fornecedor..."/></div>`:''}
+    ${auditHistoryHtml}
+    <div class="form-actions">
+      <button class="btn btn-ghost" onclick="_closeModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveCashflow('${type}', ${id})">Confirmar Lançamento</button>
+    </div>
+  `);
+}
+
+function saveCashflow(type, id){
+  const desc = document.getElementById('fl-desc').value.trim();
+  const val = parseFloat(document.getElementById('fl-value').value)||0;
+  const date = document.getElementById('fl-date').value;
+  
+  if(!desc || val<=0) return toast('Preencha os campos obrigatórios corretamente','error');
+
+  if(id){
+    const item = state.cashflow.find(x=>x.id===id);
+    const reason = document.getElementById('fl-reason').value.trim();
+    if(!reason) return toast('Insira o motivo de alteração deste registro','error');
+
+    if(!item.history) item.history = [];
+    item.history.push({ ts: nowISO(), before: item.value, after: val, reason: reason });
+
+    if(item.type==='in'){
+      state.yearRevenue = state.yearRevenue - item.value + val;
     }
-});
+    item.desc = desc;
+    item.value = val;
+    item.date = date;
+    toast('Lançamento editado e auditado!');
+  }else{
+    state.cashflow.push({
+      id: state.cashflow.length ? Math.max(...state.cashflow.map(x=>x.id))+1 : 1,
+      date: date, desc: desc, type: type, value: val, editable: true, history: []
+    });
+    if(type==='in') state.yearRevenue += val;
+    toast('Lançamento inserido no livro caixa!');
+  }
+  _closeModal();
+  renderPage('cashflow');
+}
+
+function deleteCashflow(id){
+  if(!confirm('Deseja excluir este lançamento definitivo do livro caixa?'))return;
+  const item = state.cashflow.find(x=>x.id===id);
+  if(item && item.type==='in') state.yearRevenue -= item.value;
+  state.cashflow = state.cashflow.filter(x=>x.id!==id);
+  renderPage('cashflow');
+  toast('Lançamento apagado!','error');
+}
+
+// ══════════════════════════════════════
+// REPORTS
+// ══════════════════════════════════════
+function renderReports(el){
+  const paid = state.sales.filter(s=>s.status==='paid');
+  const revenue = paid.reduce((a,s)=>a+s.netTotal,0);
+  const cost = paid.reduce((a,s)=>a+s.items.reduce((acc,i)=>acc+(i.cost*i.qty),0),0);
+  const despesas = state.cashflow.filter(c=>c.type==='out').reduce((a,c)=>a+c.value,0);
+  const lucroLiquido = revenue - despesas;
+
+  el.innerHTML=`
+    <div class="section-header"><span class="section-title">📈 Demonstrativo de Resultados Simplificado (DRE Mês)</span></div>
+    <div class="card" style="max-width:500px">
+      <div class="calc-row"><span>(+) Receita de Vendas / Serviços:</span><strong>${R(revenue)}</strong></div>
+      <div class="calc-row" style="color:var(--muted)"><span>(-) Custo de Produtos Escoados:</span><strong>- ${R(cost)}</strong></div>
+      <hr style="border:none;border-top:1px solid var(--border);margin:8px 0"/>
+      <div class="calc-row"><span>(=) Lucro Bruto Operacional:</span><strong class="blue">${R(revenue - cost)}</strong></div>
+      <div class="calc-row" style="color:var(--red)"><span>(-) Despesas Administrativas / Fixas:</span><strong>- ${R(despesas)}</strong></div>
+      <div class="calc-box ${lucroLiquido>=0?'calc-green':''}">
+        <div class="calc-row total"><span>(=) Resultado Líquido Final:</span><span style="color:var(--${lucroLiquido>=0?'green':'red'})">${R(lucroLiquido)}</span></div>
+      </div>
+    </div>
+  `;
+}
+
+// ══════════════════════════════════════
+// SETTINGS
+// ══════════════════════════════════════
+function renderSettings(el){
+  el.innerHTML=`
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start">
+      <div class="card">
+        <div class="section-title" style="margin-bottom:16px">⚙️ Configurações das Taxas da Maquininha</div>
+        <p style="font-size:12px;color:var(--muted);margin-bottom:14px">Configure as taxas cobradas pelas operadoras para dedução automática nas vendas.</p>
+        ${Object.entries(PAY_METHODS).filter(([k,m])=>m.hasFee).map(([k,m])=>`
+          <div class="form-group">
+            <label>${m.icon} Taxa ${m.label} (%)</label>
+            <input type="number" step="0.01" id="fee-${k}" value="${state.payFees[k]}"/>
+          </div>`).join('')}
+        <button class="btn btn-primary btn-sm" onclick="saveFeesConfig()">💾 Salvar taxas</button>
+      </div>
+      
+      <div class="card" style="margin-bottom:16px">
+        <div class="section-title" style="margin-bottom:16px">🔐 Segurança</div>
+        <div class="form-group"><label>Senha atual</label><input type="password" placeholder="••••••••"/></div>
+        <div class="form-group"><label>Nova senha</label><input type="password" placeholder="••••••••"/></div>
+        <div class="form-group"><label>Confirmar nova senha</label><input type="password" placeholder="••••••••"/></div>
+        <button class="btn btn-ghost" onclick="toast('Senha alterada com sucesso!')">🔑 Alterar Senha</button>
+      </div>
+    </div>
+    
+    <div class="card" style="background:var(--red-x);border:1px solid var(--red-l);margin-top:20px;max-width:400px">
+      <div class="section-title" style="margin-bottom:8px;color:var(--red)">⚠️ Sair da conta</div>
+      <p style="font-size:13px;color:var(--muted);margin-bottom:12px">Você será desconectado do sistema com segurança.</p>
+      <button class="btn btn-danger btn-sm" onclick="logout()">Sair</button>
+    </div>
+  `;
+}
+
+function saveFeesConfig(){
+  Object.keys(PAY_METHODS).filter(k=>PAY_METHODS[k].hasFee).forEach(k=>{
+    const input=document.getElementById(`fee-${k}`);
+    if(input) state.payFees[k] = parseFloat(input.value)||0;
+  });
+  toast('Taxas configuradas salvas! Aplicadas nas próximas vendas.');
+}
 </script>
 </body>
 </html>
