@@ -322,7 +322,7 @@ const state = {
 // ⚠️ Troque pela URL do seu backend no Railway após fazer o deploy
 // Ex: 'https://mei-facil.up.railway.app'
 // Deixe '' (vazio) se o frontend e backend estiverem no mesmo servidor
-const API_BASE = '';
+const API_BASE = 'https://mei-facil-production.up.railway.app';
 
 async function apiCall(path, method='GET', body=null, requiresAuth=true){
   const headers = {'Content-Type':'application/json'};
