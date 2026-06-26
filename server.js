@@ -23,7 +23,7 @@ app.use(cors({ origin: process.env.FRONTEND_URL || '*' }));
 app.use(express.json({ limit: '10kb' }));
 app.use('/api/auth', rateLimit({ windowMs: 15*60*1000, max: 20, message: { error:'Muitas tentativas. Aguarde.' }}));
 app.use('/api',      rateLimit({ windowMs: 15*60*1000, max: 300 }));
-app.use(express.static(path.join(__dirname, 'frontend')));
+app.use(express.static(path.join(__dirname, '.')));
 
 // ── Auth Middleware ─────────────────────────────────────────────
 const auth = (req, res, next) => {
@@ -283,7 +283,7 @@ app.get('/api/reports/annual', auth, async (req, res) => {
 app.get('/api/health', (_, res) => res.json({ status:'ok', ts: new Date().toISOString() }));
 
 // ── Fallback SPA ────────────────────────────────────────────
-app.get('*', (_, res) => res.sendFile(path.join(__dirname, 'frontend', 'index.html')));
+app.get('*', (_, res) => res.sendFile(path.join(__dirname, 'index.html')));
 
 // ── Error handler ────────────────────────────────────────────
 app.use((err, req, res, next) => {
