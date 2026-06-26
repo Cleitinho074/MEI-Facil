@@ -67,12 +67,25 @@ app.post('/api/auth/register', async (req, res) => {
 app.post('/api/auth/login', async (req, res) => {
   try {
     const { email, password } = req.body;
+    if (!email || !password) return res.status(400).json({ error: 'E-mail e senha são obrigatórios' });
     const { rows } = await Q('SELECT * FROM users WHERE email=$1', [email?.toLowerCase()]);
     if (!rows.length || !await bcrypt.compare(password, rows[0].password_hash))
       return res.status(401).json({ error: 'E-mail ou senha incorretos' });
     const { password_hash, ...user } = rows[0];
     res.json({ token: signToken(user.id), user });
   } catch (e) { res.status(500).json({ error: 'Erro no login' }); }
+});
+
+// GET /api/auth/me — valida token e retorna dados do usuário
+app.get('/api/auth/me', auth, async (req, res) => {
+  try {
+    const { rows } = await Q(
+      'SELECT id, name, email, cpf_cnpj, razao_social FROM users WHERE id=$1',
+      [req.userId]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Usuário não encontrado' });
+    res.json({ user: rows[0] });
+  } catch (e) { res.status(500).json({ error: 'Erro ao buscar usuário' }); }
 });
 
 // ══════════════════════════════════════════════════════════════

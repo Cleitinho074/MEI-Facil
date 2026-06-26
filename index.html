@@ -1,0 +1,1497 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>MEI Fácil — Gestão Simplificada</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --blue:#1B4F72;--blue-l:#2E86C1;--blue-x:#D6EAF8;
+  --green:#1E8449;--green-l:#27AE60;--green-x:#D5F5E3;
+  --red:#C0392B;--red-l:#E74C3C;--red-x:#FADBD8;
+  --amber:#D68910;--amber-x:#FEF9E7;
+  --purple:#7D3C98;--purple-x:#F5EEF8;
+  --bg:#F0F4F8;--card:#FFFFFF;--text:#2C3E50;--muted:#6C7A89;
+  --border:#DDE3EA;--shadow:0 2px 12px rgba(0,0,0,.08);--radius:10px;
+}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.6}
+a{color:var(--blue-l);text-decoration:none}
+
+/* Layout */
+.app{display:flex;min-height:100vh}
+.sidebar{width:220px;background:var(--blue);color:#fff;display:flex;flex-direction:column;flex-shrink:0;transition:width .25s ease}
+.sidebar.collapsed{width:60px}
+.logo{padding:20px 16px;font-size:18px;font-weight:700;white-space:nowrap;overflow:hidden;display:flex;align-items:center;gap:10px;border-bottom:1px solid rgba(255,255,255,.15)}
+.logo-icon{font-size:22px;flex-shrink:0}
+.logo-text,.nav-label{transition:opacity .2s}
+.sidebar.collapsed .logo-text,.sidebar.collapsed .nav-label{opacity:0;width:0}
+.nav{flex:1;padding:12px 0}
+.nav-item{display:flex;align-items:center;gap:12px;padding:11px 18px;cursor:pointer;font-size:14px;white-space:nowrap;overflow:hidden;border-left:3px solid transparent;transition:background .15s,border-color .15s}
+.nav-item:hover{background:rgba(255,255,255,.1)}
+.nav-item.active{background:rgba(255,255,255,.15);border-left-color:#fff;font-weight:600}
+.nav-icon{font-size:18px;flex-shrink:0}
+.collapse-btn{padding:14px 18px;cursor:pointer;font-size:18px;border-top:1px solid rgba(255,255,255,.15);text-align:center}
+.main{flex:1;display:flex;flex-direction:column;min-width:0}
+.topbar{background:var(--card);border-bottom:1px solid var(--border);padding:14px 24px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
+.topbar-title{font-size:18px;font-weight:700}
+.topbar-right{display:flex;align-items:center;gap:12px}
+.user-badge{background:var(--blue);color:#fff;border-radius:50%;width:34px;height:34px;display:grid;place-items:center;font-weight:700;font-size:13px;cursor:pointer}
+.content{padding:24px;flex:1}
+
+/* Cards */
+.cards-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:24px}
+.card{background:var(--card);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow)}
+.card-metric{display:flex;flex-direction:column;gap:4px}
+.card-label{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;font-weight:600}
+.card-value{font-size:26px;font-weight:700}
+.card-sub{font-size:12px;color:var(--muted);margin-top:2px}
+.card-icon{font-size:28px;margin-bottom:8px}
+.green{color:var(--green-l)}.red{color:var(--red-l)}.blue{color:var(--blue-l)}.amber{color:var(--amber)}.purple{color:var(--purple)}
+
+/* MEI limit */
+.limit-card{background:var(--card);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow);margin-bottom:24px}
+.limit-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.limit-title{font-weight:700;font-size:15px}
+.limit-pct{font-size:22px;font-weight:700}
+.progress-track{background:var(--border);border-radius:99px;height:14px;overflow:hidden}
+.progress-fill{height:100%;border-radius:99px;background:linear-gradient(90deg,var(--green-l),var(--blue-l));transition:width .6s ease}
+.progress-fill.warning{background:linear-gradient(90deg,var(--amber),#E67E22)}
+.progress-fill.danger{background:linear-gradient(90deg,var(--red-l),#C0392B)}
+.limit-info{display:flex;justify-content:space-between;margin-top:8px;font-size:12px;color:var(--muted);flex-wrap:wrap;gap:4px}
+.alert-box{background:var(--red-x);border:1px solid var(--red-l);border-radius:8px;padding:12px 16px;margin-top:12px;font-size:13px;color:var(--red);display:flex;align-items:center;gap:8px}
+.alert-amber{background:var(--amber-x);border-color:var(--amber);color:var(--amber)}
+
+/* Tables */
+.section-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px}
+.section-title{font-size:16px;font-weight:700}
+.table-wrap{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;overflow-x:auto}
+table{width:100%;border-collapse:collapse;min-width:520px}
+th{background:var(--bg);padding:11px 16px;text-align:left;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border)}
+td{padding:12px 16px;border-bottom:1px solid var(--border);font-size:14px}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:#F7FAFC}
+.badge{display:inline-flex;align-items:center;padding:2px 10px;border-radius:99px;font-size:12px;font-weight:600}
+.badge-green{background:var(--green-x);color:var(--green)}
+.badge-red{background:var(--red-x);color:var(--red)}
+.badge-blue{background:var(--blue-x);color:var(--blue)}
+.badge-amber{background:var(--amber-x);color:var(--amber)}
+.badge-purple{background:var(--purple-x);color:var(--purple)}
+
+/* Buttons */
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;border:none;transition:opacity .15s,transform .1s}
+.btn:active{transform:scale(.97)}
+.btn-primary{background:var(--blue-l);color:#fff}
+.btn-primary:hover,.btn-success:hover,.btn-danger:hover{opacity:.9}
+.btn-success{background:var(--green-l);color:#fff}
+.btn-danger{background:var(--red-l);color:#fff}
+.btn-ghost{background:transparent;color:var(--blue-l);border:1.5px solid var(--blue-l)}
+.btn-sm{padding:5px 12px;font-size:13px}
+
+/* Modal */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;place-items:center;z-index:1000;padding:16px}
+.modal-overlay.open{display:grid}
+.modal{background:var(--card);border-radius:12px;padding:28px;width:100%;max-width:640px;max-height:92vh;overflow-y:auto}
+.modal-wide{max-width:780px}
+.modal-title{font-size:18px;font-weight:700;margin-bottom:20px}
+.form-group{margin-bottom:16px}
+label{display:block;font-size:13px;font-weight:600;color:var(--muted);margin-bottom:5px}
+input,select,textarea{width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:14px;font-family:inherit;transition:border-color .15s;outline:none}
+input:focus,select:focus,textarea:focus{border-color:var(--blue-l)}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.form-row-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+.form-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:20px;flex-wrap:wrap}
+
+/* Calc box */
+.calc-box{background:var(--blue-x);border-radius:10px;padding:16px;margin-top:8px}
+.calc-row{display:flex;justify-content:space-between;font-size:13px;padding:3px 0}
+.calc-row.total{font-weight:700;font-size:15px;border-top:1px solid var(--border);margin-top:6px;padding-top:8px}
+.calc-green{background:var(--green-x)}
+
+/* Sale items list */
+.sale-items-list{border:1.5px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:12px}
+.sale-item-row{display:grid;grid-template-columns:1fr 80px 100px 80px 36px;gap:8px;align-items:center;padding:10px 12px;border-bottom:1px solid var(--border);background:var(--card)}
+.sale-item-row:last-child{border-bottom:none}
+.sale-item-row:nth-child(even){background:#FAFBFD}
+.sale-item-header{background:var(--bg)!important;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;padding:8px 12px!important}
+.sale-item-add{padding:10px 12px;border-top:1px solid var(--border);background:var(--bg);display:flex;align-items:center;gap:8px}
+.item-subtotal{font-weight:700;color:var(--green-l);font-size:13px;text-align:right}
+.remove-item-btn{width:28px;height:28px;border-radius:6px;border:none;background:var(--red-x);color:var(--red);cursor:pointer;font-size:15px;display:grid;place-items:center;flex-shrink:0}
+.remove-item-btn:hover{background:var(--red-l);color:#fff}
+
+/* Payment method pills */
+.pay-methods{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px}
+.pay-pill{padding:7px 14px;border-radius:8px;border:2px solid var(--border);background:var(--card);cursor:pointer;font-size:13px;font-weight:600;color:var(--muted);transition:all .15s;display:flex;align-items:center;gap:6px}
+.pay-pill.active{border-color:var(--blue-l);background:var(--blue-x);color:var(--blue)}
+.pay-pill.active.green-pay{border-color:var(--green-l);background:var(--green-x);color:var(--green)}
+.fee-row{background:var(--amber-x);border:1px solid var(--amber);border-radius:8px;padding:10px 14px;font-size:13px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+
+/* Bar chart */
+.bar-chart{display:flex;align-items:flex-end;gap:8px;height:120px;padding:0 4px}
+.bar-wrap{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;height:100%;justify-content:flex-end}
+.bar-col{width:100%;border-radius:6px 6px 0 0;transition:height .4s ease;min-height:4px}
+.bar-label{font-size:10px;color:var(--muted)}
+.bar-val{font-size:11px;font-weight:600}
+
+/* Tabs */
+.tabs{display:flex;gap:4px;margin-bottom:20px;background:var(--bg);border-radius:8px;padding:4px;flex-wrap:wrap}
+.tab{padding:7px 16px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;color:var(--muted);transition:background .15s,color .15s}
+.tab.active{background:var(--card);color:var(--blue-l);box-shadow:0 1px 4px rgba(0,0,0,.1)}
+
+/* History/audit */
+.history-entry{border-left:3px solid var(--blue-l);padding:8px 14px;margin-bottom:8px;background:var(--bg);border-radius:0 8px 8px 0;font-size:13px}
+.history-entry.edit{border-color:var(--amber)}
+.history-entry.create{border-color:var(--green-l)}
+
+/* Toast */
+.toast{position:fixed;bottom:24px;right:24px;z-index:2000;background:var(--text);color:#fff;padding:12px 20px;border-radius:10px;font-size:14px;font-weight:600;box-shadow:var(--shadow);transform:translateY(80px);opacity:0;transition:all .3s ease;display:flex;align-items:center;gap:8px}
+.toast.show{transform:translateY(0);opacity:1}
+.toast.success{background:var(--green)}
+.toast.error{background:var(--red)}
+
+/* Auth */
+.auth-page{min-height:100vh;display:grid;place-items:center;background:linear-gradient(135deg,var(--blue) 0%,var(--blue-l) 100%);padding:16px}
+.auth-card{background:var(--card);border-radius:16px;padding:40px;width:100%;max-width:400px}
+.auth-logo{text-align:center;margin-bottom:28px}
+.auth-logo-icon{font-size:48px;display:block;margin-bottom:8px}
+.auth-logo-title{font-size:24px;font-weight:700;color:var(--blue)}
+.auth-logo-sub{font-size:13px;color:var(--muted)}
+.auth-btn{width:100%;padding:12px;font-size:16px}
+
+/* Stock badge */
+.stock-low{color:var(--red);font-weight:700}
+.stock-ok{color:var(--green-l)}
+
+@media(max-width:768px){
+  .sidebar{width:0;position:fixed;height:100%;z-index:500;overflow:hidden}
+  .sidebar.mobile-open{width:220px}
+  .form-row,.form-row-3{grid-template-columns:1fr}
+  .cards-grid{grid-template-columns:1fr 1fr}
+  .topbar{padding:12px 16px}
+  .content{padding:16px}
+  .hide-mobile{display:none}
+  .sale-item-row{grid-template-columns:1fr 60px 80px 70px 32px;gap:4px;padding:8px}
+}
+@media(max-width:480px){
+  .cards-grid{grid-template-columns:1fr}
+  .pay-pill{font-size:12px;padding:6px 10px}
+}
+</style>
+</head>
+<body>
+
+<!-- AUTH -->
+<div id="auth-page" class="auth-page">
+  <div class="auth-card">
+    <div class="auth-logo">
+      <span class="auth-logo-icon">🏪</span>
+      <div class="auth-logo-title">MEI Fácil</div>
+      <div class="auth-logo-sub">Gestão simples para o seu negócio</div>
+    </div>
+    <div id="auth-tab-bar" class="tabs" style="margin-bottom:24px">
+      <div class="tab active" onclick="switchAuth('login')">Entrar</div>
+      <div class="tab" onclick="switchAuth('register')">Cadastrar</div>
+    </div>
+    <div id="auth-login">
+      <div class="form-group"><label>E-mail</label><input type="email" id="login-email" placeholder="seu@email.com"/></div>
+      <div class="form-group"><label>Senha</label><input type="password" id="login-pass" placeholder="••••••••"/></div>
+      <button class="btn btn-primary auth-btn" onclick="doLogin()">Entrar na conta</button>
+      <p style="text-align:center;margin-top:14px;font-size:13px;color:var(--muted)"><a href="#" onclick="demoLogin()">🎯 Entrar com conta demo</a></p>
+    </div>
+    <div id="auth-register" style="display:none">
+      <div class="form-group"><label>Nome completo</label><input type="text" id="reg-name" placeholder="João da Silva"/></div>
+      <div class="form-group"><label>E-mail</label><input type="email" id="reg-email" placeholder="seu@email.com"/></div>
+      <div class="form-group"><label>CPF/CNPJ</label><input type="text" id="reg-cpf" placeholder="000.000.000-00"/></div>
+      <div class="form-group"><label>Senha</label><input type="password" id="reg-pass" placeholder="Mínimo 8 caracteres"/></div>
+      <button class="btn btn-primary auth-btn" onclick="doRegister()">Criar conta grátis</button>
+    </div>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app" class="app" style="display:none">
+  <nav class="sidebar" id="sidebar">
+    <div class="logo"><span class="logo-icon">🏪</span><span class="logo-text">MEI Fácil</span></div>
+    <div class="nav">
+      <div class="nav-item active" onclick="navigate('dashboard')"><span class="nav-icon">📊</span><span class="nav-label">Dashboard</span></div>
+      <div class="nav-item" onclick="navigate('clients')"><span class="nav-icon">👥</span><span class="nav-label">Clientes</span></div>
+      <div class="nav-item" onclick="navigate('products')"><span class="nav-icon">📦</span><span class="nav-label">Produtos/Serviços</span></div>
+      <div class="nav-item" onclick="navigate('sales')"><span class="nav-icon">🛒</span><span class="nav-label">Vendas</span></div>
+      <div class="nav-item" onclick="navigate('cashflow')"><span class="nav-icon">💰</span><span class="nav-label">Fluxo de Caixa</span></div>
+      <div class="nav-item" onclick="navigate('reports')"><span class="nav-icon">📈</span><span class="nav-label">Relatórios</span></div>
+      <div class="nav-item" onclick="navigate('settings')"><span class="nav-icon">⚙️</span><span class="nav-label">Configurações</span></div>
+    </div>
+    <div class="collapse-btn" onclick="toggleSidebar()">‹</div>
+  </nav>
+  <div class="main">
+    <header class="topbar">
+      <div style="display:flex;align-items:center;gap:12px">
+        <span style="cursor:pointer;font-size:20px;display:none" id="menu-btn" onclick="toggleMobile()">☰</span>
+        <span class="topbar-title" id="page-title">Dashboard</span>
+      </div>
+      <div class="topbar-right">
+        <span id="topbar-date" style="font-size:13px;color:var(--muted)" class="hide-mobile"></span>
+        <div class="user-badge" id="user-badge" onclick="navigate('settings')">J</div>
+      </div>
+    </header>
+    <div class="content" id="content"></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-overlay" onclick="closeModal(event)">
+  <div class="modal" id="modal-box"><div id="modal-content"></div></div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+// ══════════════════════════════════════
+// STATE
+// ══════════════════════════════════════
+const MEI_LIMIT = 81000;
+
+const PAY_METHODS = {
+  dinheiro: { label:'Dinheiro',        icon:'💵', hasFee:false },
+  pix:      { label:'PIX',             icon:'⚡', hasFee:true,  defaultFee:0 },
+  debito:   { label:'Cartão Débito',   icon:'💳', hasFee:true,  defaultFee:1.5 },
+  credito:  { label:'Cartão Crédito',  icon:'💳', hasFee:true,  defaultFee:2.99 },
+  boleto:   { label:'Boleto',          icon:'📄', hasFee:false },
+};
+
+const state = {
+  user: null,
+  page: 'dashboard',
+  sidebarCollapsed: false,
+  payFees: { pix:0, debito:1.5, credito:2.99 }, // configurable fees %
+  clients: [
+    {id:1,name:'Maria Oliveira',cpf:'123.456.789-00',phone:'(67)99999-1111',email:'maria@email.com',city:'Campo Grande'},
+    {id:2,name:'José Santos',cpf:'987.654.321-00',phone:'(67)98888-2222',email:'jose@email.com',city:'Dourados'},
+    {id:3,name:'Ana Costa',cpf:'456.789.123-00',phone:'(67)97777-3333',email:'ana@email.com',city:'Três Lagoas'},
+  ],
+  products: [
+    {id:1,name:'Coxinha',type:'product',cost:2.50,margin:120,price:5.50,unit:'un',stock:40},
+    {id:2,name:'Pastel Grande',type:'product',cost:3.00,margin:133,price:7.00,unit:'un',stock:25},
+    {id:3,name:'Refrigerante',type:'product',cost:3.50,margin:71,price:6.00,unit:'un',stock:30},
+    {id:4,name:'Corte de Cabelo',type:'service',cost:15,margin:120,price:33,unit:'un',stock:null},
+    {id:5,name:'Manicure',type:'service',cost:10,margin:100,price:20,unit:'un',stock:null},
+    {id:6,name:'Escova Progressiva',type:'service',cost:50,margin:160,price:130,unit:'un',stock:null},
+  ],
+  // Sales now store items array + payment info
+  sales: [
+    {id:1,date:'2025-06-01',clientId:1,clientName:'Maria Oliveira',
+     items:[{productId:4,name:'Corte de Cabelo',qty:1,unitPrice:33,cost:15,subtotal:33}],
+     total:33,profit:18,status:'paid',payMethod:'dinheiro',feePct:0,feeValue:0,netTotal:33},
+    {id:2,date:'2025-06-02',clientId:2,clientName:'José Santos',
+     items:[{productId:5,name:'Manicure',qty:2,unitPrice:20,cost:10,subtotal:40}],
+     total:40,profit:20,status:'paid',payMethod:'pix',feePct:0,feeValue:0,netTotal:40},
+    {id:3,date:'2025-06-05',clientId:3,clientName:'Ana Costa',
+     items:[
+       {productId:1,name:'Coxinha',qty:2,unitPrice:5.50,cost:2.50,subtotal:11},
+       {productId:2,name:'Pastel Grande',qty:3,unitPrice:7.00,cost:3.00,subtotal:21},
+       {productId:3,name:'Refrigerante',qty:1,unitPrice:6.00,cost:3.50,subtotal:6},
+     ],
+     total:38,profit:22.5,status:'paid',payMethod:'credito',feePct:2.99,feeValue:1.14,netTotal:36.86},
+    {id:4,date:'2025-06-08',clientId:1,clientName:'Maria Oliveira',
+     items:[{productId:6,name:'Escova Progressiva',qty:1,unitPrice:130,cost:50,subtotal:130}],
+     total:130,profit:80,status:'paid',payMethod:'debito',feePct:1.5,feeValue:1.95,netTotal:128.05},
+    {id:5,date:'2025-06-10',clientId:2,clientName:'José Santos',
+     items:[{productId:4,name:'Corte de Cabelo',qty:1,unitPrice:33,cost:15,subtotal:33}],
+     total:33,profit:18,status:'pending',payMethod:'dinheiro',feePct:0,feeValue:0,netTotal:33},
+  ],
+  cashflow: [
+    {id:1,date:'2025-06-01',desc:'Venda #1 — Corte de Cabelo',type:'in',value:33,saleId:1,editable:true,history:[]},
+    {id:2,date:'2025-06-02',desc:'Fornecedor capilar',type:'out',value:120,editable:true,history:[]},
+    {id:3,date:'2025-06-03',desc:'Aluguel',type:'out',value:600,editable:true,history:[]},
+    {id:4,date:'2025-06-05',desc:'Venda #3 — 3 itens',type:'in',value:36.86,saleId:3,editable:true,history:[]},
+    {id:5,date:'2025-06-08',desc:'Venda #4 — Escova Progressiva',type:'in',value:128.05,saleId:4,editable:true,history:[]},
+    {id:6,date:'2025-06-09',desc:'DAS MEI mensal',type:'out',value:76,editable:true,history:[]},
+    {id:7,date:'2025-06-10',desc:'Material de limpeza',type:'out',value:45,editable:true,history:[]},
+  ],
+  yearRevenue: 42750,
+  // Revenue edit audit log (global)
+  revenueHistory: [
+    {ts:'2025-06-01T10:00:00',action:'init',before:null,after:42750,reason:'Valor inicial do sistema',user:'Sistema'}
+  ],
+};
+
+// ══════════════════════════════════════
+// AUTH — conectada ao backend real
+// ══════════════════════════════════════
+
+// ⚠️ Troque pela URL do seu backend no Railway após fazer o deploy
+// Ex: 'https://mei-facil.up.railway.app'
+// Deixe '' (vazio) se o frontend e backend estiverem no mesmo servidor
+const API_BASE = '';
+
+async function apiCall(path, method='GET', body=null, requiresAuth=true){
+  const headers = {'Content-Type':'application/json'};
+  if(requiresAuth){
+    const token = localStorage.getItem('mei_jwt');
+    if(!token){ showAuthPage(); return null; }
+    headers['Authorization'] = 'Bearer ' + token;
+  }
+  const opts = { method, headers };
+  if(body) opts.body = JSON.stringify(body);
+  try {
+    const res = await fetch(API_BASE + path, opts);
+    const data = await res.json();
+    if(!res.ok) throw new Error(data.error || 'Erro desconhecido');
+    return data;
+  } catch(err) {
+    toast(err.message || 'Erro de conexão com o servidor', 'error');
+    return null;
+  }
+}
+
+function showAuthPage(){
+  document.getElementById('app').style.display='none';
+  document.getElementById('auth-page').style.display='grid';
+}
+
+function setAuthLoading(btn, loading){
+  btn.disabled = loading;
+  btn.textContent = loading ? '⏳ Aguarde...' : btn.dataset.label;
+}
+
+function switchAuth(tab){
+  document.getElementById('auth-login').style.display    = tab==='login'?'':'none';
+  document.getElementById('auth-register').style.display = tab==='register'?'':'none';
+  document.querySelectorAll('#auth-tab-bar .tab').forEach((t,i)=>t.classList.toggle('active',(i===0&&tab==='login')||(i===1&&tab==='register')));
+}
+
+async function doLogin(){
+  const email = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-pass').value;
+  if(!email || !password) return toast('Preencha e-mail e senha','error');
+
+  const btn = document.querySelector('#auth-login .auth-btn');
+  btn.dataset.label = btn.textContent;
+  setAuthLoading(btn, true);
+
+  const data = await apiCall('/api/auth/login', 'POST', {email, password}, false);
+  setAuthLoading(btn, false);
+  if(!data) return;
+
+  localStorage.setItem('mei_jwt', data.token);
+  loginSuccess(data.user);
+}
+
+async function doRegister(){
+  const name     = document.getElementById('reg-name').value.trim();
+  const email    = document.getElementById('reg-email').value.trim();
+  const cpf_cnpj = document.getElementById('reg-cpf').value.trim();
+  const password = document.getElementById('reg-pass').value;
+  if(!name || !email || !password) return toast('Preencha todos os campos','error');
+  if(password.length < 8) return toast('Senha deve ter no mínimo 8 caracteres','error');
+
+  const btn = document.querySelector('#auth-register .auth-btn');
+  btn.dataset.label = btn.textContent;
+  setAuthLoading(btn, true);
+
+  const data = await apiCall('/api/auth/register', 'POST', {name, email, password, cpf_cnpj}, false);
+  setAuthLoading(btn, false);
+  if(!data) return;
+
+  localStorage.setItem('mei_jwt', data.token);
+  loginSuccess(data.user);
+}
+
+function demoLogin(){
+  // Conta demo — só funciona se existir no banco
+  document.getElementById('login-email').value = 'demo@meifacil.com.br';
+  document.getElementById('login-pass').value  = 'demo12345';
+  toast('Credenciais demo preenchidas! Clique em Entrar.', 'success');
+}
+
+function loginSuccess(user){
+  state.user = user;
+  document.getElementById('auth-page').style.display = 'none';
+  document.getElementById('app').style.display = 'flex';
+  document.getElementById('user-badge').textContent = (user.name||'U')[0].toUpperCase();
+  updateTopbarDate();
+  navigate('dashboard');
+  toast(`Bem-vindo(a), ${(user.name||'').split(' ')[0]}! 👋`,'success');
+}
+
+function logout(){
+  localStorage.removeItem('mei_jwt');
+  state.user = null;
+  showAuthPage();
+}
+
+// Auto-login se token ainda válido
+(async function(){
+  const token = localStorage.getItem('mei_jwt');
+  if(!token) return;
+  // Valida o token com o backend
+  const data = await apiCall('/api/auth/me', 'GET', null, true);
+  if(data && data.user) {
+    loginSuccess(data.user);
+  } else {
+    localStorage.removeItem('mei_jwt');
+  }
+})();
+
+// ══════════════════════════════════════
+// NAV
+// ══════════════════════════════════════
+const pageNames={dashboard:'Dashboard',clients:'Clientes',products:'Produtos & Serviços',sales:'Vendas',cashflow:'Fluxo de Caixa',reports:'Relatórios',settings:'Configurações'};
+function navigate(page){
+  state.page=page;
+  document.getElementById('page-title').textContent=pageNames[page];
+  document.querySelectorAll('.nav-item').forEach(el=>el.classList.remove('active'));
+  const idx=['dashboard','clients','products','sales','cashflow','reports','settings'].indexOf(page);
+  if(idx>=0)document.querySelectorAll('.nav-item')[idx].classList.add('active');
+  document.getElementById('sidebar').classList.remove('mobile-open');
+  renderPage(page);
+}
+function toggleSidebar(){document.getElementById('sidebar').classList.toggle('collapsed');}
+function toggleMobile(){document.getElementById('sidebar').classList.toggle('mobile-open');}
+if(window.innerWidth<=768)document.getElementById('menu-btn').style.display='block';
+window.addEventListener('resize',()=>{document.getElementById('menu-btn').style.display=window.innerWidth<=768?'block':'none';});
+
+// ══════════════════════════════════════
+// HELPERS
+// ══════════════════════════════════════
+const R=v=>'R$ '+(+v).toFixed(2).replace('.',',').replace(/\B(?=(\d{3})+(?!\d))/g,'.');
+function fmt(d){return new Date(d+'T00:00:00').toLocaleDateString('pt-BR');}
+function nowISO(){return new Date().toISOString();}
+function updateTopbarDate(){
+  const d=new Date();
+  document.getElementById('topbar-date').textContent=d.toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'short',year:'numeric'});
+}
+function toast(msg,type='success'){
+  const el=document.getElementById('toast');
+  el.textContent=(type==='success'?'✅ ':type==='error'?'❌ ':'ℹ️ ')+msg;
+  el.className='toast show '+type;
+  clearTimeout(el._t);
+  el._t=setTimeout(()=>el.classList.remove('show'),3500);
+}
+function openModal(html,wide=false){
+  document.getElementById('modal-box').className='modal'+(wide?' modal-wide':'');
+  document.getElementById('modal-content').innerHTML=html;
+  document.getElementById('modal-overlay').classList.add('open');
+}
+function closeModal(e){
+  if(e&&e.target!==document.getElementById('modal-overlay'))return;
+  document.getElementById('modal-overlay').classList.remove('open');
+}
+function _closeModal(){closeModal({target:document.getElementById('modal-overlay')});}
+function payIcon(m){return PAY_METHODS[m]?.icon||'💳';}
+function payLabel(m){return PAY_METHODS[m]?.label||m;}
+
+// ══════════════════════════════════════
+// RENDER ROUTER
+// ══════════════════════════════════════
+function renderPage(page){
+  const el=document.getElementById('content');
+  ({dashboard:renderDashboard,clients:renderClients,products:renderProducts,
+    sales:renderSales,cashflow:renderCashflow,reports:renderReports,settings:renderSettings}
+  [page]||renderDashboard)(el);
+}
+
+// ══════════════════════════════════════
+// DASHBOARD
+// ══════════════════════════════════════
+function renderDashboard(el){
+  const paidSales=state.sales.filter(s=>s.status==='paid');
+  const totalRevenue=paidSales.reduce((a,s)=>a+s.netTotal,0);
+  const totalProfit=paidSales.reduce((a,s)=>a+s.profit,0);
+  const totalOut=state.cashflow.filter(c=>c.type==='out').reduce((a,c)=>a+c.value,0);
+  const totalIn=state.cashflow.filter(c=>c.type==='in').reduce((a,c)=>a+c.value,0);
+  const pct=Math.min(100,(state.yearRevenue/MEI_LIMIT)*100);
+  const remaining=MEI_LIMIT-state.yearRevenue;
+  const alertClass=pct>=90?'danger':pct>=75?'warning':'';
+  const alertMsg=pct>=90
+    ?`⚠️ ATENÇÃO: Você está a apenas ${R(remaining)} do limite MEI. Consulte um contador urgentemente.`
+    :pct>=75?`🔔 Atenção: Você atingiu ${pct.toFixed(0)}% do limite anual. Fique atento.`:'';
+  const months=['Jan','Fev','Mar','Abr','Mai','Jun'];
+  const vals=[5200,6800,4900,7200,8100,totalRevenue];
+  const maxVal=Math.max(...vals);
+
+  // Payment method breakdown
+  const payBreakdown={};
+  paidSales.forEach(s=>{payBreakdown[s.payMethod]=(payBreakdown[s.payMethod]||0)+s.netTotal;});
+  const totalFees=paidSales.reduce((a,s)=>a+s.feeValue,0);
+
+  el.innerHTML=`
+    <div class="limit-card">
+      <div class="limit-header">
+        <span class="limit-title">🏛️ Limite Anual MEI 2025</span>
+        <span class="limit-pct ${pct>=90?'red':pct>=75?'amber':'green'}">${pct.toFixed(1)}%</span>
+      </div>
+      <div class="progress-track"><div class="progress-fill ${alertClass}" style="width:${pct}%"></div></div>
+      <div class="limit-info">
+        <span>Faturado: <strong>${R(state.yearRevenue)}</strong></span>
+        <span>Limite: <strong>${R(MEI_LIMIT)}</strong></span>
+        <span>Restante: <strong>${R(remaining)}</strong></span>
+        <button class="btn btn-ghost btn-sm" onclick="openEditRevenueModal()" style="margin-left:auto">✏️ Corrigir faturamento</button>
+      </div>
+      ${alertMsg?`<div class="alert-box ${pct<90?'alert-amber':''}">${alertMsg}</div>`:''}
+    </div>
+
+    <div class="cards-grid">
+      <div class="card card-metric"><div class="card-icon">💚</div><div class="card-label">Receita líquida (mês)</div><div class="card-value green">${R(totalRevenue)}</div><div class="card-sub">${paidSales.length} vendas pagas</div></div>
+      <div class="card card-metric"><div class="card-icon">💙</div><div class="card-label">Lucro estimado (mês)</div><div class="card-value blue">${R(totalProfit)}</div><div class="card-sub">Margem: ${totalRevenue>0?(totalProfit/totalRevenue*100).toFixed(1):0}%</div></div>
+      <div class="card card-metric"><div class="card-icon">❤️</div><div class="card-label">Despesas (mês)</div><div class="card-value red">${R(totalOut)}</div><div class="card-sub">${state.cashflow.filter(c=>c.type==='out').length} lançamentos</div></div>
+      <div class="card card-metric"><div class="card-icon">🏧</div><div class="card-label">Taxas máquina (mês)</div><div class="card-value amber">${R(totalFees)}</div><div class="card-sub">Cobradas pelas operadoras</div></div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:24px">
+      <div class="card">
+        <div class="section-header"><span class="section-title">📊 Faturamento — últimos 6 meses</span></div>
+        <div class="bar-chart" id="bar-chart"></div>
+      </div>
+      <div class="card">
+        <div class="section-title" style="margin-bottom:14px">💳 Por forma de pagamento</div>
+        ${Object.entries(payBreakdown).map(([m,v])=>`
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;font-size:13px">
+            <span>${payIcon(m)} ${payLabel(m)}</span>
+            <strong>${R(v)}</strong>
+          </div>`).join('')||'<span style="color:var(--muted);font-size:13px">Sem vendas ainda</span>'}
+        <hr style="border:none;border-top:1px solid var(--border);margin:12px 0"/>
+        <button class="btn btn-primary btn-sm" onclick="navigate('sales')" style="width:100%">+ Nova Venda</button>
+      </div>
+    </div>
+
+    <div class="section-header">
+      <span class="section-title">🛒 Últimas Vendas</span>
+      <button class="btn btn-ghost btn-sm" onclick="navigate('sales')">Ver tudo</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Data</th><th>Cliente</th><th>Itens</th><th>Pagamento</th><th>Total líquido</th><th>Status</th></tr></thead>
+        <tbody>
+          ${[...state.sales].reverse().slice(0,5).map(s=>`
+            <tr>
+              <td>${fmt(s.date)}</td>
+              <td>${s.clientName||'—'}</td>
+              <td>${s.items.map(i=>`${i.qty}x ${i.name}`).join(', ')}</td>
+              <td>${payIcon(s.payMethod)} ${payLabel(s.payMethod)}${s.feeValue>0?` <span style="color:var(--muted);font-size:11px">(-${R(s.feeValue)})</span>`:''}</td>
+              <td style="font-weight:600">${R(s.netTotal)}</td>
+              <td><span class="badge ${s.status==='paid'?'badge-green':'badge-amber'}">${s.status==='paid'?'✅ Pago':'⏳ Pendente'}</span></td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+
+  // Bar chart
+  const barEl=document.getElementById('bar-chart');
+  if(barEl)barEl.innerHTML=months.map((m,i)=>{
+    const h=Math.max(8,(vals[i]/maxVal)*100);
+    const color=i===5?'var(--blue-l)':'var(--border)';
+    return `<div class="bar-wrap"><span class="bar-val">${i===5?R(vals[i]).replace('R$ ',''):'R$'+Math.round(vals[i]/1000)+'k'}</span><div class="bar-col" style="height:${h}%;background:${color}"></div><span class="bar-label">${m}</span></div>`;
+  }).join('');
+}
+
+// ══════════════════════════════════════
+// REVENUE EDIT + AUDIT
+// ══════════════════════════════════════
+function openEditRevenueModal(){
+  openModal(`
+    <div class="modal-title">✏️ Corrigir Faturamento Anual</div>
+    <div style="background:var(--amber-x);border:1px solid var(--amber);border-radius:8px;padding:12px 16px;margin-bottom:16px;font-size:13px;color:var(--amber)">
+      ⚠️ Use apenas para corrigir valores lançados incorretamente. Todas as alterações ficam registradas no histórico de auditoria.
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Faturamento atual</label>
+        <input type="text" value="${R(state.yearRevenue)}" disabled style="background:var(--bg);color:var(--muted)"/>
+      </div>
+      <div class="form-group">
+        <label>Novo valor (R$)</label>
+        <input type="number" id="rev-new" step="0.01" min="0" value="${state.yearRevenue.toFixed(2)}" />
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Motivo da correção <span style="color:var(--red)">*</span></label>
+      <textarea id="rev-reason" rows="3" placeholder="Ex: Venda duplicada lançada, valor digitado errado em 05/06..."></textarea>
+    </div>
+    <div class="form-group">
+      <label>Histórico de alterações</label>
+      <div style="max-height:180px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:8px">
+        ${state.revenueHistory.length?state.revenueHistory.slice().reverse().map(h=>`
+          <div class="history-entry ${h.action==='init'?'create':'edit'}">
+            <div style="display:flex;justify-content:space-between;margin-bottom:3px">
+              <strong>${h.action==='init'?'🟢 Registro inicial':'✏️ Correção'}</strong>
+              <span style="color:var(--muted);font-size:12px">${new Date(h.ts).toLocaleString('pt-BR')}</span>
+            </div>
+            ${h.before!==null?`<div>De: <strong>${R(h.before)}</strong> → Para: <strong>${R(h.after)}</strong></div>`:`<div>Valor: <strong>${R(h.after)}</strong></div>`}
+            <div style="color:var(--muted);font-size:12px;margin-top:2px">${h.reason} — <em>${h.user}</em></div>
+          </div>`).join(''):'<span style="color:var(--muted);font-size:13px">Sem histórico</span>'}
+      </div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-ghost" onclick="_closeModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveRevenueEdit()">💾 Salvar Correção</button>
+    </div>
+  `);
+}
+
+function saveRevenueEdit(){
+  const newVal=parseFloat(document.getElementById('rev-new').value);
+  const reason=document.getElementById('rev-reason').value.trim();
+  if(isNaN(newVal)||newVal<0)return toast('Informe um valor válido','error');
+  if(!reason)return toast('Informe o motivo da correção','error');
+  const before=state.yearRevenue;
+  state.revenueHistory.push({ts:nowISO(),action:'edit',before,after:newVal,reason,user:state.user?.name||'Usuário'});
+  state.yearRevenue=newVal;
+  _closeModal();
+  toast('Faturamento corrigido e registrado no histórico!','success');
+  renderDashboard(document.getElementById('content'));
+}
+
+// ══════════════════════════════════════
+// CLIENTS
+// ══════════════════════════════════════
+function renderClients(el){
+  el.innerHTML=`
+    <div class="section-header">
+      <span class="section-title">👥 Clientes (${state.clients.length})</span>
+      <button class="btn btn-primary btn-sm" onclick="openClientModal()">+ Novo Cliente</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Nome</th><th>CPF</th><th>Telefone</th><th>E-mail</th><th>Cidade</th><th>Ações</th></tr></thead>
+        <tbody>
+          ${state.clients.map(c=>`<tr>
+            <td><strong>${c.name}</strong></td><td style="color:var(--muted)">${c.cpf}</td>
+            <td>${c.phone}</td><td>${c.email}</td><td>${c.city}</td>
+            <td>
+              <button class="btn btn-ghost btn-sm" onclick="openClientModal(${c.id})">✏️</button>
+              <button class="btn btn-sm" style="background:var(--red-x);color:var(--red)" onclick="deleteClient(${c.id})">🗑️</button>
+            </td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+}
+function openClientModal(id){
+  const c=id?state.clients.find(x=>x.id===id):{};
+  openModal(`
+    <div class="modal-title">${id?'Editar':'Novo'} Cliente</div>
+    <div class="form-row">
+      <div class="form-group"><label>Nome completo</label><input id="c-name" value="${c.name||''}" placeholder="Maria da Silva"/></div>
+      <div class="form-group"><label>CPF</label><input id="c-cpf" value="${c.cpf||''}" placeholder="000.000.000-00"/></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Telefone</label><input id="c-phone" value="${c.phone||''}" placeholder="(67)99999-0000"/></div>
+      <div class="form-group"><label>E-mail</label><input type="email" id="c-email" value="${c.email||''}" placeholder="cliente@email.com"/></div>
+    </div>
+    <div class="form-group"><label>Cidade</label><input id="c-city" value="${c.city||''}" placeholder="Campo Grande"/></div>
+    <div class="form-actions">
+      <button class="btn btn-ghost" onclick="_closeModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveClient(${id||'null'})">💾 Salvar</button>
+    </div>`);
+}
+function saveClient(id){
+  const obj={id:id||Date.now(),name:document.getElementById('c-name').value,cpf:document.getElementById('c-cpf').value,phone:document.getElementById('c-phone').value,email:document.getElementById('c-email').value,city:document.getElementById('c-city').value};
+  if(!obj.name)return toast('Nome é obrigatório','error');
+  if(id){const i=state.clients.findIndex(c=>c.id===id);state.clients[i]=obj;}else state.clients.push(obj);
+  _closeModal();toast('Cliente salvo!');renderClients(document.getElementById('content'));
+}
+function deleteClient(id){
+  if(!confirm('Remover este cliente?'))return;
+  state.clients=state.clients.filter(c=>c.id!==id);
+  toast('Cliente removido');renderClients(document.getElementById('content'));
+}
+
+// ══════════════════════════════════════
+// PRODUCTS (with stock)
+// ══════════════════════════════════════
+function renderProducts(el){
+  el.innerHTML=`
+    <div class="section-header">
+      <span class="section-title">📦 Produtos & Serviços (${state.products.length})</span>
+      <button class="btn btn-primary btn-sm" onclick="openProductModal()">+ Novo Item</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Nome</th><th>Tipo</th><th>Custo</th><th>Margem</th><th>Preço Venda</th><th>Estoque</th><th>Ações</th></tr></thead>
+        <tbody>
+          ${state.products.map(p=>`<tr>
+            <td><strong>${p.name}</strong></td>
+            <td><span class="badge ${p.type==='service'?'badge-blue':'badge-green'}">${p.type==='service'?'Serviço':'Produto'}</span></td>
+            <td>${R(p.cost)}</td>
+            <td><span class="badge badge-amber">${p.margin}%</span></td>
+            <td style="font-weight:700;color:var(--green-l)">${R(p.price)}</td>
+            <td>${p.type==='service'?'<span style="color:var(--muted);font-size:12px">N/A</span>':p.stock<=5?`<span class="stock-low">⚠️ ${p.stock} un</span>`:`<span class="stock-ok">${p.stock} un</span>`}</td>
+            <td>
+              <button class="btn btn-ghost btn-sm" onclick="openProductModal(${p.id})">✏️</button>
+              ${p.type==='product'?`<button class="btn btn-sm" style="background:var(--blue-x);color:var(--blue)" onclick="openStockModal(${p.id})">📦</button>`:''}
+              <button class="btn btn-sm" style="background:var(--red-x);color:var(--red)" onclick="deleteProduct(${p.id})">🗑️</button>
+            </td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+}
+function openProductModal(id){
+  const p=id?state.products.find(x=>x.id===id):{type:'service',margin:100,unit:'un',stock:0};
+  openModal(`
+    <div class="modal-title">${id?'Editar':'Novo'} Produto/Serviço</div>
+    <div class="form-group"><label>Nome</label><input id="p-name" value="${p.name||''}" placeholder="Ex: Coxinha"/></div>
+    <div class="form-row">
+      <div class="form-group"><label>Tipo</label>
+        <select id="p-type" onchange="toggleStockField()">
+          <option value="service" ${p.type==='service'?'selected':''}>Serviço</option>
+          <option value="product" ${p.type==='product'?'selected':''}>Produto</option>
+        </select>
+      </div>
+      <div class="form-group"><label>Unidade</label><input id="p-unit" value="${p.unit||'un'}" placeholder="un, kg, m..."/></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Custo (R$)</label><input id="p-cost" type="number" min="0" step="0.01" value="${p.cost||0}" oninput="calcPrice()"/></div>
+      <div class="form-group"><label>Margem de Lucro (%)</label><input id="p-margin" type="number" min="0" value="${p.margin||100}" oninput="calcPrice()"/></div>
+    </div>
+    <div class="calc-box" id="calc-box">
+      <div class="calc-row"><span>Custo:</span><span id="calc-cost">R$ 0,00</span></div>
+      <div class="calc-row"><span id="calc-margin-lbl">Lucro:</span><span id="calc-profit">R$ 0,00</span></div>
+      <div class="calc-row total"><span>💰 Preço sugerido:</span><span id="calc-price" style="color:var(--green-l)">R$ 0,00</span></div>
+    </div>
+    <div class="form-group" style="margin-top:12px"><label>Preço de Venda (R$)</label><input id="p-price" type="number" min="0" step="0.01" value="${p.price||0}"/></div>
+    <div id="stock-field" style="display:${p.type==='product'?'block':'none'}">
+      <div class="form-group"><label>Estoque inicial</label><input id="p-stock" type="number" min="0" value="${p.stock||0}"/></div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-ghost" onclick="_closeModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveProduct(${id||'null'})">💾 Salvar</button>
+    </div>`);
+  setTimeout(calcPrice,50);
+}
+function toggleStockField(){
+  const t=document.getElementById('p-type').value;
+  document.getElementById('stock-field').style.display=t==='product'?'block':'none';
+}
+function calcPrice(){
+  const cost=parseFloat(document.getElementById('p-cost')?.value)||0;
+  const margin=parseFloat(document.getElementById('p-margin')?.value)||0;
+  const profit=cost*margin/100;
+  const price=cost+profit;
+  document.getElementById('calc-cost').textContent=R(cost);
+  document.getElementById('calc-profit').textContent=R(profit);
+  document.getElementById('calc-price').textContent=R(price);
+  document.getElementById('p-price').value=price.toFixed(2);
+  const lbl=document.getElementById('calc-margin-lbl');
+  if(lbl)lbl.textContent=`Lucro (${margin}%):`;
+}
+function saveProduct(id){
+  const type=document.getElementById('p-type').value;
+  const obj={id:id||Date.now(),name:document.getElementById('p-name').value,type,unit:document.getElementById('p-unit').value,cost:parseFloat(document.getElementById('p-cost').value)||0,margin:parseFloat(document.getElementById('p-margin').value)||0,price:parseFloat(document.getElementById('p-price').value)||0,stock:type==='product'?(parseInt(document.getElementById('p-stock').value)||0):null};
+  if(!obj.name)return toast('Nome é obrigatório','error');
+  if(id){const i=state.products.findIndex(p=>p.id===id);state.products[i]=obj;}else state.products.push(obj);
+  _closeModal();toast('Item salvo!');renderProducts(document.getElementById('content'));
+}
+function deleteProduct(id){
+  if(!confirm('Remover este item?'))return;
+  state.products=state.products.filter(p=>p.id!==id);
+  toast('Item removido');renderProducts(document.getElementById('content'));
+}
+function openStockModal(id){
+  const p=state.products.find(x=>x.id===id);
+  openModal(`
+    <div class="modal-title">📦 Ajustar Estoque — ${p.name}</div>
+    <div style="text-align:center;margin-bottom:16px">
+      <div style="font-size:36px;font-weight:700;color:var(--blue-l)">${p.stock} un</div>
+      <div style="color:var(--muted);font-size:13px">Estoque atual</div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Tipo de ajuste</label>
+        <select id="stock-op">
+          <option value="add">➕ Entrada (compra/reposição)</option>
+          <option value="sub">➖ Saída (perda/descarte)</option>
+          <option value="set">📌 Definir quantidade exata</option>
+        </select>
+      </div>
+      <div class="form-group"><label>Quantidade</label><input type="number" id="stock-qty" min="1" value="1"/></div>
+    </div>
+    <div class="form-group"><label>Motivo</label><input id="stock-reason" placeholder="Reposição, perda, inventário..."/></div>
+    <div class="form-actions">
+      <button class="btn btn-ghost" onclick="_closeModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveStock(${id})">💾 Confirmar</button>
+    </div>`);
+}
+function saveStock(id){
+  const p=state.products.find(x=>x.id===id);
+  const op=document.getElementById('stock-op').value;
+  const qty=parseInt(document.getElementById('stock-qty').value)||0;
+  if(op==='add')p.stock+=qty;
+  else if(op==='sub')p.stock=Math.max(0,p.stock-qty);
+  else p.stock=qty;
+  _closeModal();toast(`Estoque atualizado: ${p.stock} un`,'success');
+  renderProducts(document.getElementById('content'));
+}
+
+// ══════════════════════════════════════
+// SALES — multi-item + payment method
+// ══════════════════════════════════════
+function renderSales(el){
+  const paid=state.sales.filter(s=>s.status==='paid');
+  const total=paid.reduce((a,s)=>a+s.netTotal,0);
+  const profit=paid.reduce((a,s)=>a+s.profit,0);
+  const fees=paid.reduce((a,s)=>a+s.feeValue,0);
+  el.innerHTML=`
+    <div class="cards-grid" style="margin-bottom:20px">
+      <div class="card card-metric"><div class="card-label">Total líquido (mês)</div><div class="card-value green">${R(total)}</div></div>
+      <div class="card card-metric"><div class="card-label">Lucro estimado</div><div class="card-value blue">${R(profit)}</div></div>
+      <div class="card card-metric"><div class="card-label">Taxas cobradas</div><div class="card-value amber">${R(fees)}</div></div>
+      <div class="card card-metric"><div class="card-label">Pendentes</div><div class="card-value amber">${state.sales.filter(s=>s.status==='pending').length}</div></div>
+    </div>
+    <div class="section-header">
+      <span class="section-title">🛒 Vendas</span>
+      <button class="btn btn-success btn-sm" onclick="openSaleModal()">+ Nova Venda</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Data</th><th>Cliente</th><th>Itens</th><th>Pagamento</th><th>Taxa</th><th>Total líq.</th><th>Lucro</th><th>Status</th><th>Ações</th></tr></thead>
+        <tbody>
+          ${[...state.sales].reverse().map(s=>`<tr>
+            <td>${fmt(s.date)}</td>
+            <td>${s.clientName||'<span style="color:var(--muted)">Avulso</span>'}</td>
+            <td style="font-size:12px;color:var(--muted);max-width:160px">${s.items.map(i=>`${i.qty}× ${i.name}`).join('<br>')}</td>
+            <td>${payIcon(s.payMethod)} ${payLabel(s.payMethod)}</td>
+            <td style="color:var(--amber);font-size:12px">${s.feeValue>0?'-'+R(s.feeValue):'—'}</td>
+            <td style="font-weight:700">${R(s.netTotal)}</td>
+            <td style="color:var(--green-l);font-weight:600">${s.status==='paid'?R(s.profit):'—'}</td>
+            <td><span class="badge ${s.status==='paid'?'badge-green':'badge-amber'}" style="cursor:pointer" onclick="toggleSaleStatus(${s.id})">${s.status==='paid'?'✅ Pago':'⏳ Pendente'}</span></td>
+            <td style="white-space:nowrap">
+              <button class="btn btn-ghost btn-sm" onclick="viewSaleDetail(${s.id})" title="Ver detalhes">👁️</button>
+              <button class="btn btn-sm" style="background:var(--red-x);color:var(--red)" onclick="deleteSale(${s.id})">🗑️</button>
+            </td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+// ── Sale Detail Modal ──
+function viewSaleDetail(id){
+  const s=state.sales.find(x=>x.id===id);
+  if(!s)return;
+  openModal(`
+    <div class="modal-title">🧾 Venda #${s.id} — ${fmt(s.date)}</div>
+    <div style="margin-bottom:16px;display:flex;gap:12px;flex-wrap:wrap">
+      <div><span style="color:var(--muted);font-size:12px">CLIENTE</span><br><strong>${s.clientName||'Cliente avulso'}</strong></div>
+      <div><span style="color:var(--muted);font-size:12px">STATUS</span><br><span class="badge ${s.status==='paid'?'badge-green':'badge-amber'}">${s.status==='paid'?'✅ Pago':'⏳ Pendente'}</span></div>
+      <div><span style="color:var(--muted);font-size:12px">PAGAMENTO</span><br>${payIcon(s.payMethod)} ${payLabel(s.payMethod)}</div>
+    </div>
+    <div class="sale-items-list">
+      <div class="sale-item-row sale-item-header"><span>Produto/Serviço</span><span>Qtd</span><span>Unit.</span><span>Subtotal</span><span></span></div>
+      ${s.items.map(i=>`
+        <div class="sale-item-row">
+          <span style="font-weight:600">${i.name}</span>
+          <span style="color:var(--muted)">${i.qty}</span>
+          <span>${R(i.unitPrice)}</span>
+          <span class="item-subtotal">${R(i.subtotal)}</span>
+          <span></span>
+        </div>`).join('')}
+    </div>
+    <div class="calc-box calc-green">
+      <div class="calc-row"><span>Subtotal bruto:</span><span>${R(s.total)}</span></div>
+      ${s.feeValue>0?`<div class="calc-row"><span>Taxa ${payLabel(s.payMethod)} (${s.feePct}%):</span><span style="color:var(--red-l)">-${R(s.feeValue)}</span></div>`:''}
+      <div class="calc-row total"><span>💰 Total recebido:</span><span style="color:var(--green-l)">${R(s.netTotal)}</span></div>
+      <div class="calc-row" style="margin-top:4px"><span>📈 Lucro estimado:</span><span style="color:var(--blue-l);font-weight:600">${R(s.profit)}</span></div>
+    </div>
+    <div class="form-actions" style="margin-top:16px">
+      <button class="btn btn-ghost" onclick="_closeModal()">Fechar</button>
+      ${s.status==='pending'?`<button class="btn btn-success" onclick="toggleSaleStatus(${s.id});_closeModal();">✅ Confirmar Pagamento</button>`:''}
+    </div>`,true);
+}
+
+// ── Sale Modal — multi-item ──
+let saleItems=[];
+let selectedPayMethod='dinheiro';
+
+function openSaleModal(){
+  saleItems=[];
+  selectedPayMethod='dinheiro';
+  const today=new Date().toISOString().split('T')[0];
+  openModal(`
+    <div class="modal-title">🛒 Nova Venda</div>
+    <div class="form-row">
+      <div class="form-group"><label>Data</label><input type="date" id="s-date" value="${today}"/></div>
+      <div class="form-group"><label>Cliente (opcional)</label>
+        <select id="s-client">
+          <option value="">Cliente avulso</option>
+          ${state.clients.map(c=>`<option value="${c.id}">${c.name}</option>`).join('')}
+        </select>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label>Itens da venda</label>
+      <div class="sale-items-list" id="items-list">
+        <div class="sale-item-row sale-item-header"><span>Produto/Serviço</span><span>Qtd</span><span>Unit. R$</span><span>Subtotal</span><span></span></div>
+        <div id="sale-rows"></div>
+        <div class="sale-item-add">
+          <select id="add-product" style="flex:1">
+            <option value="">Selecionar produto/serviço...</option>
+            ${state.products.map(p=>`<option value="${p.id}" data-price="${p.price}" data-cost="${p.cost}" data-stock="${p.stock}" data-type="${p.type}">${p.name} — ${R(p.price)}${p.type==='product'?` (estoque: ${p.stock??'∞'})`:''}</option>`).join('')}
+          </select>
+          <button class="btn btn-primary btn-sm" onclick="addSaleItem()">+ Adicionar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Summary -->
+    <div class="calc-box" id="sale-summary" style="display:none">
+      <div class="calc-row"><span>📦 Total de itens:</span><span id="sum-qty">0</span></div>
+      <div class="calc-row"><span>💰 Subtotal bruto:</span><span id="sum-gross">R$ 0,00</span></div>
+      <div class="calc-row"><span>📈 Lucro estimado:</span><span id="sum-profit" style="color:var(--blue-l)">R$ 0,00</span></div>
+      <div id="fee-row-summary" style="display:none" class="calc-row"><span id="fee-label">Taxa:</span><span id="sum-fee" style="color:var(--red-l)">-R$ 0,00</span></div>
+      <div class="calc-row total"><span>✅ Total a receber:</span><span id="sum-net" style="color:var(--green-l)">R$ 0,00</span></div>
+    </div>
+
+    <div class="form-group" style="margin-top:16px">
+      <label>Forma de pagamento</label>
+      <div class="pay-methods" id="pay-methods-bar">
+        ${Object.entries(PAY_METHODS).map(([k,v])=>`
+          <div class="pay-pill ${k==='dinheiro'?'active green-pay':''}" onclick="selectPayMethod('${k}')" id="pill-${k}">
+            ${v.icon} ${v.label}
+          </div>`).join('')}
+      </div>
+      <div id="fee-config" style="display:none">
+        <div class="fee-row">
+          🏧 Taxa da máquina:
+          <input type="number" id="pay-fee" step="0.01" min="0" max="20" style="width:80px" value="0" oninput="updateSaleSummary()"/>
+          <span>%</span>
+          <span style="color:var(--muted);font-size:12px">(Configure conforme sua maquininha)</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label>Status</label>
+      <select id="s-status">
+        <option value="paid">✅ Pago agora</option>
+        <option value="pending">⏳ Pendente / Fiado</option>
+      </select>
+    </div>
+
+    <div class="form-actions">
+      <button class="btn btn-ghost" onclick="_closeModal()">Cancelar</button>
+      <button class="btn btn-success" onclick="saveSale()">💾 Registrar Venda</button>
+    </div>`,true);
+}
+
+function addSaleItem(){
+  const sel=document.getElementById('add-product');
+  const opt=sel.selectedOptions[0];
+  if(!opt.value)return toast('Selecione um produto','error');
+  const pid=parseInt(opt.value);
+  const price=parseFloat(opt.dataset.price);
+  const cost=parseFloat(opt.dataset.cost);
+  const stock=opt.dataset.stock==='null'?null:parseInt(opt.dataset.stock);
+  const type=opt.dataset.type;
+  // Check stock for products
+  if(type==='product'&&stock!==null){
+    const alreadyInCart=saleItems.filter(i=>i.productId===pid).reduce((a,i)=>a+i.qty,0);
+    if(alreadyInCart>=stock)return toast(`Estoque insuficiente (${stock} un disponíveis)`,'error');
+  }
+  // Check if already in list
+  const existing=saleItems.find(i=>i.productId===pid);
+  if(existing){existing.qty++;existing.subtotal=+(existing.qty*existing.unitPrice).toFixed(2);}
+  else saleItems.push({productId:pid,name:sel.selectedOptions[0].text.split(' — ')[0],qty:1,unitPrice:price,cost,subtotal:price});
+  sel.value='';
+  renderSaleRows();
+  updateSaleSummary();
+}
+
+function renderSaleRows(){
+  const el=document.getElementById('sale-rows');
+  if(!el)return;
+  el.innerHTML=saleItems.map((item,idx)=>`
+    <div class="sale-item-row">
+      <span style="font-weight:600;font-size:13px">${item.name}</span>
+      <input type="number" min="1" value="${item.qty}" style="width:60px;padding:4px 8px;font-size:13px" oninput="updateItemQty(${idx},this.value)"/>
+      <span style="font-size:13px">${R(item.unitPrice)}</span>
+      <span class="item-subtotal">${R(item.subtotal)}</span>
+      <button class="remove-item-btn" onclick="removeSaleItem(${idx})">×</button>
+    </div>`).join('');
+  document.getElementById('sale-summary').style.display=saleItems.length?'block':'none';
+}
+
+function updateItemQty(idx,val){
+  const qty=Math.max(1,parseInt(val)||1);
+  const item=saleItems[idx];
+  if(!item)return;
+  // Stock check
+  const p=state.products.find(x=>x.id===item.productId);
+  if(p&&p.type==='product'&&p.stock!==null&&qty>p.stock){
+    toast(`Estoque insuficiente: ${p.stock} un disponíveis`,'error');
+    return;
+  }
+  item.qty=qty;
+  item.subtotal=+(qty*item.unitPrice).toFixed(2);
+  updateSaleSummary();
+}
+
+function removeSaleItem(idx){
+  saleItems.splice(idx,1);
+  renderSaleRows();
+  updateSaleSummary();
+}
+
+function selectPayMethod(method){
+  selectedPayMethod=method;
+  document.querySelectorAll('.pay-pill').forEach(p=>p.classList.remove('active','green-pay'));
+  const pill=document.getElementById(`pill-${method}`);
+  if(pill){pill.classList.add('active');if(method==='dinheiro'||method==='boleto')pill.classList.add('green-pay');}
+  const feeConfig=document.getElementById('fee-config');
+  const pm=PAY_METHODS[method];
+  if(pm.hasFee){
+    feeConfig.style.display='block';
+    const saved=state.payFees[method];
+    document.getElementById('pay-fee').value=(saved!==undefined?saved:pm.defaultFee).toFixed(2);
+  }else{
+    feeConfig.style.display='none';
+  }
+  updateSaleSummary();
+}
+
+function updateSaleSummary(){
+  const gross=saleItems.reduce((a,i)=>a+i.subtotal,0);
+  const totalQty=saleItems.reduce((a,i)=>a+i.qty,0);
+  const profit=saleItems.reduce((a,i)=>a+(i.subtotal-i.cost*i.qty),0);
+  const pm=PAY_METHODS[selectedPayMethod];
+  const feePct=pm.hasFee?(parseFloat(document.getElementById('pay-fee')?.value)||0):0;
+  const feeVal=+(gross*feePct/100).toFixed(2);
+  const net=+(gross-feeVal).toFixed(2);
+  const sumQty=document.getElementById('sum-qty');
+  const sumGross=document.getElementById('sum-gross');
+  const sumProfit=document.getElementById('sum-profit');
+  const sumFee=document.getElementById('sum-fee');
+  const sumNet=document.getElementById('sum-net');
+  const feeRow=document.getElementById('fee-row-summary');
+  const feeLabel=document.getElementById('fee-label');
+  if(sumQty)sumQty.textContent=`${totalQty} un`;
+  if(sumGross)sumGross.textContent=R(gross);
+  if(sumProfit)sumProfit.textContent=R(profit);
+  if(feeRow)feeRow.style.display=feePct>0?'flex':'none';
+  if(feeLabel)feeLabel.textContent=`Taxa ${payLabel(selectedPayMethod)} (${feePct}%):`;
+  if(sumFee)sumFee.textContent=`-${R(feeVal)}`;
+  if(sumNet)sumNet.textContent=R(net);
+}
+
+function saveSale(){
+  if(!saleItems.length)return toast('Adicione pelo menos um item','error');
+  const feePct=PAY_METHODS[selectedPayMethod].hasFee?(parseFloat(document.getElementById('pay-fee')?.value)||0):0;
+  const gross=saleItems.reduce((a,i)=>a+i.subtotal,0);
+  const feeVal=+(gross*feePct/100).toFixed(2);
+  const net=+(gross-feeVal).toFixed(2);
+  const profit=+(saleItems.reduce((a,i)=>a+(i.subtotal-i.cost*i.qty),0)).toFixed(2);
+  const clientId=parseInt(document.getElementById('s-client').value)||null;
+  const client=clientId?state.clients.find(c=>c.id===clientId):null;
+  const status=document.getElementById('s-status').value;
+  const date=document.getElementById('s-date').value;
+
+  const sale={
+    id:Date.now(),date,
+    clientId,clientName:client?client.name:'Cliente avulso',
+    items:saleItems.map(i=>({...i})),
+    total:+gross.toFixed(2),profit,status,
+    payMethod:selectedPayMethod,feePct,feeValue:feeVal,netTotal:net,
+  };
+  state.sales.push(sale);
+
+  // Save fee config for future
+  if(PAY_METHODS[selectedPayMethod].hasFee)state.payFees[selectedPayMethod]=feePct;
+
+  // Update stock for products
+  saleItems.forEach(item=>{
+    const p=state.products.find(x=>x.id===item.productId);
+    if(p&&p.type==='product'&&p.stock!==null)p.stock=Math.max(0,p.stock-item.qty);
+  });
+
+  // Cashflow entry if paid
+  if(status==='paid'){
+    const desc=`Venda #${sale.id} — ${saleItems.map(i=>`${i.qty}× ${i.name}`).join(', ')}`;
+    state.cashflow.push({id:Date.now()+1,date,desc,type:'in',value:net,saleId:sale.id,editable:true,history:[]});
+    state.yearRevenue+=net;
+  }
+
+  _closeModal();
+  toast(`Venda registrada! ${R(net)} via ${payLabel(selectedPayMethod)}`,'success');
+  renderSales(document.getElementById('content'));
+}
+
+function toggleSaleStatus(id){
+  const s=state.sales.find(x=>x.id===id);
+  if(!s)return;
+  if(s.status==='pending'){
+    s.status='paid';
+    const desc=`Venda #${s.id} — ${s.items.map(i=>`${i.qty}× ${i.name}`).join(', ')}`;
+    state.cashflow.push({id:Date.now(),date:s.date,desc,type:'in',value:s.netTotal,saleId:s.id,editable:true,history:[]});
+    state.yearRevenue+=s.netTotal;
+    // Update stock now
+    s.items.forEach(item=>{
+      const p=state.products.find(x=>x.id===item.productId);
+      if(p&&p.type==='product'&&p.stock!==null)p.stock=Math.max(0,p.stock-item.qty);
+    });
+    toast('Pagamento confirmado! ✅');
+  }else{
+    s.status='pending';
+    toast('Venda marcada como pendente');
+  }
+  renderSales(document.getElementById('content'));
+}
+
+function deleteSale(id){
+  if(!confirm('Remover esta venda?'))return;
+  state.sales=state.sales.filter(s=>s.id!==id);
+  toast('Venda removida');renderSales(document.getElementById('content'));
+}
+
+// ══════════════════════════════════════
+// CASHFLOW — with edit + audit history
+// ══════════════════════════════════════
+function renderCashflow(el){
+  const totalIn=state.cashflow.filter(c=>c.type==='in').reduce((a,c)=>a+c.value,0);
+  const totalOut=state.cashflow.filter(c=>c.type==='out').reduce((a,c)=>a+c.value,0);
+  const balance=totalIn-totalOut;
+  el.innerHTML=`
+    <div class="cards-grid" style="margin-bottom:20px">
+      <div class="card card-metric"><div class="card-label">Entradas</div><div class="card-value green">${R(totalIn)}</div></div>
+      <div class="card card-metric"><div class="card-label">Saídas</div><div class="card-value red">${R(totalOut)}</div></div>
+      <div class="card card-metric"><div class="card-label">Saldo</div><div class="card-value ${balance>=0?'green':'red'}">${R(balance)}</div></div>
+    </div>
+    <div class="section-header">
+      <span class="section-title">💰 Fluxo de Caixa</span>
+      <button class="btn btn-primary btn-sm" onclick="openCashModal()">+ Lançamento</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Data</th><th>Descrição</th><th>Tipo</th><th>Valor</th><th>Histórico</th><th>Ações</th></tr></thead>
+        <tbody>
+          ${[...state.cashflow].reverse().map(c=>`<tr>
+            <td>${fmt(c.date)}</td>
+            <td>${c.desc}${c.saleId?` <span style="font-size:11px;color:var(--muted)">#v${c.saleId}</span>`:''}</td>
+            <td><span class="badge ${c.type==='in'?'badge-green':'badge-red'}">${c.type==='in'?'▲ Entrada':'▼ Saída'}</span></td>
+            <td style="font-weight:700;color:${c.type==='in'?'var(--green-l)':'var(--red-l)'}">${c.type==='in'?'+':'-'}${R(c.value)}</td>
+            <td>${c.history&&c.history.length?`<span class="badge badge-amber" style="cursor:pointer" onclick="viewCashHistory(${c.id})">📋 ${c.history.length} edição${c.history.length>1?'ões':''}</span>`:'<span style="color:var(--muted);font-size:12px">—</span>'}</td>
+            <td style="white-space:nowrap">
+              <button class="btn btn-ghost btn-sm" onclick="openEditCashModal(${c.id})" title="Editar valor">✏️</button>
+              <button class="btn btn-sm" style="background:var(--red-x);color:var(--red)" onclick="deleteCash(${c.id})">🗑️</button>
+            </td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+function openCashModal(){
+  const today=new Date().toISOString().split('T')[0];
+  openModal(`
+    <div class="modal-title">💰 Novo Lançamento</div>
+    <div class="form-group"><label>Data</label><input type="date" id="cf-date" value="${today}"/></div>
+    <div class="form-group"><label>Descrição</label><input id="cf-desc" placeholder="Ex: Aluguel, fornecedor, venda..."/></div>
+    <div class="form-row">
+      <div class="form-group"><label>Tipo</label>
+        <select id="cf-type">
+          <option value="in">▲ Entrada</option>
+          <option value="out">▼ Saída</option>
+        </select>
+      </div>
+      <div class="form-group"><label>Valor (R$)</label><input id="cf-value" type="number" min="0" step="0.01" placeholder="0,00"/></div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-ghost" onclick="_closeModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveCash()">💾 Salvar</button>
+    </div>`);
+}
+function saveCash(){
+  const desc=document.getElementById('cf-desc').value;
+  const value=parseFloat(document.getElementById('cf-value').value)||0;
+  if(!desc)return toast('Descrição é obrigatória','error');
+  if(!value)return toast('Informe o valor','error');
+  const obj={id:Date.now(),date:document.getElementById('cf-date').value,desc,type:document.getElementById('cf-type').value,value,editable:true,history:[]};
+  if(obj.type==='in')state.yearRevenue+=value;
+  state.cashflow.push(obj);
+  _closeModal();toast('Lançamento salvo!');renderCashflow(document.getElementById('content'));
+}
+
+// ── Edit cashflow entry with audit ──
+function openEditCashModal(id){
+  const c=state.cashflow.find(x=>x.id===id);
+  if(!c)return;
+  openModal(`
+    <div class="modal-title">✏️ Editar Lançamento</div>
+    <div style="background:var(--amber-x);border:1px solid var(--amber);border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:13px;color:var(--amber)">
+      ⚠️ Alterar um lançamento registra a mudança no histórico de auditoria.
+    </div>
+    <div class="form-group"><label>Descrição</label><input id="ec-desc" value="${c.desc}"/></div>
+    <div class="form-row">
+      <div class="form-group"><label>Valor atual</label>
+        <input type="text" value="${R(c.value)}" disabled style="background:var(--bg);color:var(--muted)"/>
+      </div>
+      <div class="form-group"><label>Novo valor (R$)</label>
+yp="number" id="ec-value" step="0.01" min="0" value="${c.value.toFixed(2)}"/>
+      </div>
+    </div>
+    <div class="form-group"><label>Motivo da correção <span style="color:var(--red)">*</span></label>
+      <textarea id="ec-reason" rows="2" placeholder="Ex: Valor digitado errado, nota fiscal diferente..."></textarea>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-ghost" onclick="_closeModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveEditCash(${id})">💾 Salvar</button>
+    </div>`);
+}
+function saveEditCash(id){
+  const c=state.cashflow.find(x=>x.id===id);
+  if(!c)return;
+  const newVal=parseFloat(document.getElementById('ec-value').value);
+  const reason=document.getElementById('ec-reason').value.trim();
+  const newDesc=document.getElementById('ec-desc').value.trim();
+  if(isNaN(newVal)||newVal<=0)return toast('Valor inválido','error');
+  if(!reason)return toast('Informe o motivo da correção','error');
+  const before=c.value;
+  c.history=c.history||[];
+  c.history.push({ts:nowISO(),before,after:newVal,reason,user:state.user?.name||'Usuário',descBefore:c.desc});
+  if(c.type==='in')state.yearRevenue=state.yearRevenue-before+newVal;
+  c.value=newVal;
+  if(newDesc)c.desc=newDesc;
+  _closeModal();toast('Lançamento corrigido e auditado!','success');
+  renderCashflow(document.getElementById('content'));
+}
+
+function viewCashHistory(id){
+  const c=state.cashflow.find(x=>x.id===id);
+  if(!c||!c.history?.length)return;
+  openModal(`
+    <div class="modal-title">📋 Histórico de Alterações</div>
+    <div style="margin-bottom:12px;font-size:13px;color:var(--muted)">${c.desc}</div>
+    ${c.history.slice().reverse().map(h=>`
+      <div class="history-entry edit">
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+          <strong>✏️ Correção de valor</strong>
+          <span style="color:var(--muted);font-size:12px">${new Date(h.ts).toLocaleString('pt-BR')}</span>
+        </div>
+        <div>De <strong>${R(h.before)}</strong> → Para <strong>${R(h.after)}</strong></div>
+        <div style="color:var(--muted);font-size:12px;margin-top:2px">Motivo: ${h.reason} — <em>${h.user}</em></div>
+      </div>`).join('')}
+    <div class="form-actions"><button class="btn btn-ghost" onclick="_closeModal()">Fechar</button></div>`);
+}
+
+function deleteCash(id){
+  if(!confirm('Remover este lançamento?'))return;
+  state.cashflow=state.cashflow.filter(c=>c.id!==id);
+  toast('Lançamento removido');renderCashflow(document.getElementById('content'));
+}
+
+// ══════════════════════════════════════
+// REPORTS
+// ══════════════════════════════════════
+function renderReports(el){
+  const totalIn=state.cashflow.filter(c=>c.type==='in').reduce((a,c)=>a+c.value,0);
+  const totalOut=state.cashflow.filter(c=>c.type==='out').reduce((a,c)=>a+c.value,0);
+  const profit=totalIn-totalOut;
+  const salesByProd={};
+  state.sales.forEach(s=>s.items.forEach(i=>{salesByProd[i.name]=(salesByProd[i.name]||0)+i.subtotal;}));
+  const topSales=Object.entries(salesByProd).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  el.innerHTML=`
+    <div class="tabs" id="report-tabs">
+      <div class="tab active" onclick="reportTab('geral',this)">📊 Geral</div>
+      <div class="tab" onclick="reportTab('produtos',this)">📦 Por Produto</div>
+      <div class="tab" onclick="reportTab('pagamentos',this)">💳 Pagamentos</div>
+      <div class="tab" onclick="reportTab('mei',this)">🏛️ MEI</div>
+    </div>
+    <div id="report-content">${reportGeral(totalIn,totalOut,profit,topSales)}</div>`;
+  window._rd={totalIn,totalOut,profit,topSales};
+}
+function reportTab(tab,el){
+  document.querySelectorAll('#report-tabs .tab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  const d=window._rd;
+  const c=document.getElementById('report-content');
+  if(tab==='geral')c.innerHTML=reportGeral(d.totalIn,d.totalOut,d.profit,d.topSales);
+  if(tab==='produtos')c.innerHTML=reportProdutos();
+  if(tab==='pagamentos')c.innerHTML=reportPagamentos();
+  if(tab==='mei')c.innerHTML=reportMEI();
+}
+function reportGeral(totalIn,totalOut,profit,topSales){
+  const totalFees=state.sales.filter(s=>s.status==='paid').reduce((a,s)=>a+s.feeValue,0);
+  return `
+    <div class="cards-grid">
+      <div class="card card-metric"><div class="card-label">Total Entradas</div><div class="card-value green">${R(totalIn)}</div></div>
+      <div class="card card-metric"><div class="card-label">Total Saídas</div><div class="card-value red">${R(totalOut)}</div></div>
+      <div class="card card-metric"><div class="card-label">Lucro Líquido</div><div class="card-value ${profit>=0?'green':'red'}">${R(profit)}</div></div>
+      <div class="card card-metric"><div class="card-label">Taxas pagas</div><div class="card-value amber">${R(totalFees)}</div></div>
+    </div>
+    <div class="card" style="margin-top:20px">
+      <div class="section-title" style="margin-bottom:14px">🏆 Maiores vendas por produto</div>
+      <table><thead><tr><th>#</th><th>Produto/Serviço</th><th>Total Vendido</th></tr></thead>
+      <tbody>${topSales.map(([name,val],i)=>`<tr><td><strong>#${i+1}</strong></td><td>${name}</td><td style="font-weight:700;color:var(--green-l)">${R(val)}</td></tr>`).join('')}</tbody>
+      </table>
+    </div>`;
+}
+function reportProdutos(){
+  const salesCount={};
+  state.sales.filter(s=>s.status==='paid').forEach(s=>s.items.forEach(i=>{salesCount[i.productId]=(salesCount[i.productId]||0)+i.qty;}));
+  return `
+    <div class="card">
+      <div class="section-title" style="margin-bottom:14px">📦 Análise de Produtos & Serviços</div>
+      <table>
+        <thead><tr><th>Nome</th><th>Tipo</th><th>Custo</th><th>Preço</th><th>Lucro unit.</th><th>Estoque</th><th>Qtd vendida</th></tr></thead>
+        <tbody>
+          ${state.products.map(p=>`<tr>
+            <td><strong>${p.name}</strong></td>
+            <td><span class="badge ${p.type==='service'?'badge-blue':'badge-green'}">${p.type==='service'?'Serviço':'Produto'}</span></td>
+            <td>${R(p.cost)}</td>
+            <td style="font-weight:700">${R(p.price)}</td>
+            <td style="color:var(--green-l);font-weight:600">${R(p.price-p.cost)}</td>
+            <td>${p.type==='product'?(p.stock<=5?`<span class="stock-low">⚠️ ${p.stock}`:`<span class="stock-ok">${p.stock}`)+'</span>':'—'}</td>
+            <td style="font-weight:600">${salesCount[p.id]||0} un</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+}
+function reportPagamentos(){
+  const paid=state.sales.filter(s=>s.status==='paid');
+  const byMethod={};
+  paid.forEach(s=>{
+    if(!byMethod[s.payMethod])byMethod[s.payMethod]={count:0,gross:0,fees:0,net:0};
+    byMethod[s.payMethod].count++;
+    byMethod[s.payMethod].gross+=s.total;
+    byMethod[s.payMethod].fees+=s.feeValue;
+    byMethod[s.payMethod].net+=s.netTotal;
+  });
+  const totalFees=paid.reduce((a,s)=>a+s.feeValue,0);
+  const grandNet=paid.reduce((a,s)=>a+s.netTotal,0);
+  return `
+    <div class="cards-grid" style="margin-bottom:20px">
+      <div class="card card-metric"><div class="card-label">Total de vendas pagas</div><div class="card-value blue">${paid.length}</div></div>
+      <div class="card card-metric"><div class="card-label">Total em taxas</div><div class="card-value amber">${R(totalFees)}</div></div>
+    </div>
+    <div class="card">
+      <div class="section-title" style="margin-bottom:14px">💳 Desempenho por forma de pagamento</div>
+      <table>
+        <thead><tr><th>Método</th><th>Qtd</th><th>Bruto</th><th>Taxas</th><th>Líquido</th><th>Participação</th></tr></thead>
+        <tbody>
+          ${Object.entries(byMethod).map(([m,d])=>{
+            const pct=grandNet>0?(d.net/grandNet*100).toFixed(1):0;
+            return `<tr>
+              <td>${payIcon(m)} <strong>${payLabel(m)}</strong></td>
+              <td style="text-align:center">${d.count}</td>
+              <td>${R(d.gross)}</td>
+              <td style="color:var(--amber)">${d.fees>0?'-'+R(d.fees):'—'}</td>
+              <td style="font-weight:700;color:var(--green-l)">${R(d.net)}</td>
+              <td><div style="display:flex;align-items:center;gap:6px">
+                <div style="height:8px;width:${Math.round(pct)}px;max-width:80px;background:var(--blue-l);border-radius:4px"></div>
+                ${pct}%</div></td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
+    <div class="card" style="margin-top:16px;background:var(--amber-x);border:1px solid var(--amber)">
+      <div style="font-weight:700;margin-bottom:8px">💡 Taxas configuradas</div>
+      <div style="display:flex;flex-wrap:wrap;gap:16px;font-size:13px">
+        ${Object.entries(PAY_METHODS).filter(([,v])=>v.hasFee).map(([k,v])=>`<span>${v.icon} ${v.label}: <strong>${state.payFees[k]!==undefined?state.payFees[k]:v.defaultFee}%</strong></span>`).join('')}
+      </div>
+      <div style="font-size:12px;color:var(--muted);margin-top:6px">Ajuste as taxas em Configurações → Taxas da maquininha</div>
+    </div>`;
+}
+function reportMEI(){
+  const pct=(state.yearRevenue/MEI_LIMIT*100);
+  const months=6;
+  const projectedAnnual=(state.yearRevenue/months)*12;
+  return `
+    <div class="card" style="margin-bottom:16px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <span style="font-weight:700;font-size:15px">🏛️ Situação MEI 2025</span>
+        <button class="btn btn-ghost btn-sm" onclick="openEditRevenueModal()">✏️ Corrigir faturamento</button>
+      </div>
+      <div class="progress-track" style="height:20px"><div class="progress-fill ${pct>=90?'danger':pct>=75?'warning':''}" style="width:${Math.min(100,pct)}%"></div></div>
+      <div style="margin-top:8px;font-size:13px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:4px">
+        <span>Faturado: <strong>${R(state.yearRevenue)}</strong></span>
+        <span>${pct.toFixed(1)}% utilizado</span>
+        <span>Limite: <strong>${R(MEI_LIMIT)}</strong></span>
+      </div>
+    </div>
+    <div class="cards-grid">
+      <div class="card card-metric"><div class="card-label">Faturamento anual</div><div class="card-value blue">${R(state.yearRevenue)}</div></div>
+      <div class="card card-metric"><div class="card-label">Projeção anual</div><div class="card-value ${projectedAnnual>MEI_LIMIT?'red':'green'}">${R(projectedAnnual)}</div><div class="card-sub">${projectedAnnual>MEI_LIMIT?'⚠️ Pode ultrapassar!':'✅ Dentro do limite'}</div></div>
+      <div class="card card-metric"><div class="card-label">Restante</div><div class="card-value ${(MEI_LIMIT-state.yearRevenue)<10000?'red':'green'}">${R(MEI_LIMIT-state.yearRevenue)}</div></div>
+    </div>
+    <div class="card" style="margin-top:16px">
+      <div style="font-weight:700;margin-bottom:10px">📋 Histórico de ajustes do faturamento</div>
+      ${state.revenueHistory.length?state.revenueHistory.slice().reverse().map(h=>`
+        <div class="history-entry ${h.action==='init'?'create':'edit'}">
+          <div style="display:flex;justify-content:space-between;margin-bottom:3px"><strong>${h.action==='init'?'🟢 Registro inicial':'✏️ Correção'}</strong><span style="color:var(--muted);font-size:12px">${new Date(h.ts).toLocaleString('pt-BR')}</span></div>
+          ${h.before!==null?`<div>De: ${R(h.before)} → Para: <strong>${R(h.after)}</strong></div>`:`<div>Valor: <strong>${R(h.after)}</strong></div>`}
+          <div style="color:var(--muted);font-size:12px">${h.reason} — <em>${h.user}</em></div>
+        </div>`).join(''):'<span style="color:var(--muted);font-size:13px">Sem alterações registradas</span>'}
+    </div>
+    <div class="card" style="margin-top:16px;background:var(--blue-x);border:1px solid var(--blue-l)">
+      <div style="font-weight:700;margin-bottom:8px;color:var(--blue)">📌 Obrigações MEI mensais</div>
+      <div style="font-size:13px;display:grid;gap:6px">
+        <div>✅ DAS MEI: <strong>R$ 76,90/mês</strong> (pagar até dia 20)</div>
+        <div>✅ Declaração Anual (DASN-SIMEI): até <strong>31/05</strong> de cada ano</div>
+        <div>✅ Emitir nota fiscal para empresas (pessoa jurídica)</div>
+        <div>ℹ️ Contador não obrigatório, mas recomendado ao se aproximar do limite</div>
+      </div>
+    </div>`;
+}
+
+// ══════════════════════════════════════
+// SETTINGS
+// ══════════════════════════════════════
+function renderSettings(el){
+  el.innerHTML=`
+    <div style="max-width:620px">
+      <div class="card" style="margin-bottom:16px">
+        <div class="section-title" style="margin-bottom:16px">👤 Minha Conta</div>
+        <div class="form-group"><label>Nome completo</label><input value="${state.user?.name||''}" id="set-name"/></div>
+        <div class="form-group"><label>E-mail</label><input type="email" value="${state.user?.email||''}" id="set-email"/></div>
+        <div class="form-row">
+          <div class="form-group"><label>CNPJ MEI</label><input placeholder="00.000.000/0001-00" id="set-cnpj"/></div>
+          <div class="form-group"><label>Razão Social</label><input placeholder="João da Silva 00000000001" id="set-razao"/></div>
+        </div>
+        <button class="btn btn-primary" onclick="toast('Configurações salvas! ✅')">💾 Salvar</button>
+      </div>
+      <div class="card" style="margin-bottom:16px">
+        <div class="section-title" style="margin-bottom:4px">🏧 Taxas da Maquininha / Gateway</div>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:16px">Configure as taxas cobradas pela sua maquininha. Serão pré-preenchidas nas vendas automaticamente.</p>
+        ${Object.entries(PAY_METHODS).filter(([,v])=>v.hasFee).map(([k,v])=>`
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+            <label style="margin:0;font-size:14px;font-weight:600">${v.icon} ${v.label}</label>
+            <div style="display:flex;align-items:center;gap:8px">
+              <input type="number" id="fee-${k}" min="0" max="20" step="0.01" value="${state.payFees[k]!==undefined?state.payFees[k].toFixed(2):v.defaultFee.toFixed(2)}" style="width:80px"/>
+              <span style="color:var(--muted)">%</span>
+            </div>
+          </div>`).join('')}
+        <button class="btn btn-primary" style="margin-top:4px" onclick="saveFeesConfig()">💾 Salvar taxas</button>
+      </div>
+      <div class="card" style="margin-bottom:16px">
+        <div class="section-title" style="margin-bottom:16px">🔐 Segurança</div>
+        <div class="form-group"><label>Senha atual</label><input type="password" placeholder="••••••••"/></div>
+        <div class="form-group"><label>Nova senha</label><input type="password" placeholder="••••••••"/></div>
+        <div class="form-group"><label>Confirmar nova senha</label><input type="password" placeholder="••••••••"/></div>
+        <button class="btn btn-ghost" onclick="toast('Senha alterada com sucesso!')">🔑 Alterar Senha</button>
+      </div>
+      <div class="card" style="background:var(--red-x);border:1px solid var(--red-l)">
+        <div class="section-title" style="margin-bottom:8px;color:var(--red)">⚠️ Sair da conta</div>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:12px">Você será desconectado do sistema.</p>
+        <button class="btn btn-danger btn-sm" onclick="logout()">Sair</button>
+      </div>
+    </div>`;
+}
+function saveFeesConfig(){
+  Object.keys(PAY_METHODS).filter(k=>PAY_METHODS[k].hasFee).forEach(k=>{
+    const input=document.getElementById(`fee-${k}`);
+    if(input)state.payFees[k]=parseFloat(input.value)||0;
+  });
+  toast('Taxas salvas! Aplicadas nas próximas vendas ✅','success');
+}
+
+// ══════════════════════════════════════
+// INIT
+// ══════════════════════════════════════
+updateTopbarDate();
+setInterval(updateTopbarDate,60000);
+</script>
+</body>
+</html>
