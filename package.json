@@ -2,11 +2,10 @@
   "name": "mei-facil-api",
   "version": "1.0.0",
   "description": "Sistema de gestão financeira para MEI",
-  "main": "backend/server.js",
+  "main": "server.js",
   "scripts": {
-    "start": "node backend/server.js",
-    "dev": "npx nodemon backend/server.js",
-    "db:init": "psql $DATABASE_URL -f backend/schema.sql"
+    "start": "node server.js",
+    "dev": "npx nodemon server.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
