@@ -19,7 +19,12 @@ const db  = new Pool({ connectionString: process.env.DATABASE_URL,
 
 // ── Middleware ─────────────────────────────────────────────────
 app.use(helmet());
-app.use(cors({ origin: process.env.FRONTEND_URL || '*' }));
+app.use(cors({
+  origin: '*',
+  methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
+  allowedHeaders: ['Content-Type','Authorization'],
+}));
+app.options('*', cors()); // preflight
 app.use(express.json({ limit: '10kb' }));
 app.use('/api/auth', rateLimit({ windowMs: 15*60*1000, max: 20, message: { error:'Muitas tentativas. Aguarde.' }}));
 app.use('/api',      rateLimit({ windowMs: 15*60*1000, max: 300 }));
@@ -193,7 +198,7 @@ app.post('/api/sales', auth, async (req, res) => {
       );
       // Update stock
       if (item.product_id) {
-        await Q('UPDATE products SET stock=GREATEST(0,COALESCE(stock,0)-$1) WHERE id=$2 AND user_id=$3 AND type='product'',
+        await Q("UPDATE products SET stock=GREATEST(0,COALESCE(stock,0)-$1) WHERE id=$2 AND user_id=$3 AND type='product'",
           [item.qty, item.product_id, req.userId]);
       }
     }
