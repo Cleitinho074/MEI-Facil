@@ -263,57 +263,83 @@ const state = {
   user: null,
   page: 'dashboard',
   sidebarCollapsed: false,
-  payFees: { pix:0, debito:1.5, credito:2.99 }, // configurable fees %
-  clients: [
-    {id:1,name:'Maria Oliveira',cpf:'123.456.789-00',phone:'(67)99999-1111',email:'maria@email.com',city:'Campo Grande'},
-    {id:2,name:'José Santos',cpf:'987.654.321-00',phone:'(67)98888-2222',email:'jose@email.com',city:'Dourados'},
-    {id:3,name:'Ana Costa',cpf:'456.789.123-00',phone:'(67)97777-3333',email:'ana@email.com',city:'Três Lagoas'},
-  ],
-  products: [
-    {id:1,name:'Coxinha',type:'product',cost:2.50,margin:120,price:5.50,unit:'un',stock:40},
-    {id:2,name:'Pastel Grande',type:'product',cost:3.00,margin:133,price:7.00,unit:'un',stock:25},
-    {id:3,name:'Refrigerante',type:'product',cost:3.50,margin:71,price:6.00,unit:'un',stock:30},
-    {id:4,name:'Corte de Cabelo',type:'service',cost:15,margin:120,price:33,unit:'un',stock:null},
-    {id:5,name:'Manicure',type:'service',cost:10,margin:100,price:20,unit:'un',stock:null},
-    {id:6,name:'Escova Progressiva',type:'service',cost:50,margin:160,price:130,unit:'un',stock:null},
-  ],
-  // Sales now store items array + payment info
-  sales: [
-    {id:1,date:'2025-06-01',clientId:1,clientName:'Maria Oliveira',
-     items:[{productId:4,name:'Corte de Cabelo',qty:1,unitPrice:33,cost:15,subtotal:33}],
-     total:33,profit:18,status:'paid',payMethod:'dinheiro',feePct:0,feeValue:0,netTotal:33},
-    {id:2,date:'2025-06-02',clientId:2,clientName:'José Santos',
-     items:[{productId:5,name:'Manicure',qty:2,unitPrice:20,cost:10,subtotal:40}],
-     total:40,profit:20,status:'paid',payMethod:'pix',feePct:0,feeValue:0,netTotal:40},
-    {id:3,date:'2025-06-05',clientId:3,clientName:'Ana Costa',
-     items:[
-       {productId:1,name:'Coxinha',qty:2,unitPrice:5.50,cost:2.50,subtotal:11},
-       {productId:2,name:'Pastel Grande',qty:3,unitPrice:7.00,cost:3.00,subtotal:21},
-       {productId:3,name:'Refrigerante',qty:1,unitPrice:6.00,cost:3.50,subtotal:6},
-     ],
-     total:38,profit:22.5,status:'paid',payMethod:'credito',feePct:2.99,feeValue:1.14,netTotal:36.86},
-    {id:4,date:'2025-06-08',clientId:1,clientName:'Maria Oliveira',
-     items:[{productId:6,name:'Escova Progressiva',qty:1,unitPrice:130,cost:50,subtotal:130}],
-     total:130,profit:80,status:'paid',payMethod:'debito',feePct:1.5,feeValue:1.95,netTotal:128.05},
-    {id:5,date:'2025-06-10',clientId:2,clientName:'José Santos',
-     items:[{productId:4,name:'Corte de Cabelo',qty:1,unitPrice:33,cost:15,subtotal:33}],
-     total:33,profit:18,status:'pending',payMethod:'dinheiro',feePct:0,feeValue:0,netTotal:33},
-  ],
-  cashflow: [
-    {id:1,date:'2025-06-01',desc:'Venda #1 — Corte de Cabelo',type:'in',value:33,saleId:1,editable:true,history:[]},
-    {id:2,date:'2025-06-02',desc:'Fornecedor capilar',type:'out',value:120,editable:true,history:[]},
-    {id:3,date:'2025-06-03',desc:'Aluguel',type:'out',value:600,editable:true,history:[]},
-    {id:4,date:'2025-06-05',desc:'Venda #3 — 3 itens',type:'in',value:36.86,saleId:3,editable:true,history:[]},
-    {id:5,date:'2025-06-08',desc:'Venda #4 — Escova Progressiva',type:'in',value:128.05,saleId:4,editable:true,history:[]},
-    {id:6,date:'2025-06-09',desc:'DAS MEI mensal',type:'out',value:76,editable:true,history:[]},
-    {id:7,date:'2025-06-10',desc:'Material de limpeza',type:'out',value:45,editable:true,history:[]},
-  ],
-  yearRevenue: 42750,
-  // Revenue edit audit log (global)
-  revenueHistory: [
-    {ts:'2025-06-01T10:00:00',action:'init',before:null,after:42750,reason:'Valor inicial do sistema',user:'Sistema'}
-  ],
+  payFees: { pix:0, debito:1.5, credito:2.99 },
+  // All data loaded from API — starts empty
+  clients: [],
+  products: [],
+  sales: [],
+  cashflow: [],
+  yearRevenue: 0,
+  revenueHistory: [],
+  dashboardData: null,
 };
+
+// ══════════════════════════════════════
+// DATA LOADING — fetch from API
+// ══════════════════════════════════════
+function loading(el, msg='Carregando...'){
+  el.innerHTML=`<div style="text-align:center;padding:60px;color:var(--muted)">
+    <div style="font-size:32px;margin-bottom:12px">⏳</div>
+    <div>${msg}</div>
+  </div>`;
+}
+
+async function loadClients(){
+  const data = await apiCall('/api/clients');
+  if(data) state.clients = data;
+  return state.clients;
+}
+
+async function loadProducts(){
+  const data = await apiCall('/api/products');
+  if(data) state.products = data;
+  return state.products;
+}
+
+async function loadSales(){
+  const data = await apiCall('/api/sales');
+  if(data){
+    // normalize field names from DB
+    state.sales = data.map(s=>({
+      ...s,
+      clientName: s.client_name || 'Cliente avulso',
+      payMethod:  s.pay_method  || 'dinheiro',
+      feePct:     parseFloat(s.fee_pct)   || 0,
+      feeValue:   parseFloat(s.fee_value) || 0,
+      netTotal:   parseFloat(s.net_total) || parseFloat(s.total),
+      profit:     parseFloat(s.profit)    || 0,
+      items:      s.items || [],
+    }));
+  }
+  return state.sales;
+}
+
+async function loadCashflow(){
+  const data = await apiCall('/api/cashflow');
+  if(data){
+    state.cashflow = data.map(c=>({
+      ...c,
+      value: parseFloat(c.value),
+      history: c.edit_history || [],
+    }));
+  }
+  return state.cashflow;
+}
+
+async function loadDashboard(){
+  const data = await apiCall('/api/reports/dashboard');
+  if(data){
+    state.dashboardData = data;
+    state.yearRevenue = data.year_revenue || 0;
+  }
+  return state.dashboardData;
+}
+
+async function loadRevenueHistory(){
+  const data = await apiCall('/api/revenue-audit');
+  if(data) state.revenueHistory = data;
+  return state.revenueHistory;
+}
 
 // ══════════════════════════════════════
 // AUTH — conectada ao backend real
@@ -437,14 +463,14 @@ function logout(){
 // NAV
 // ══════════════════════════════════════
 const pageNames={dashboard:'Dashboard',clients:'Clientes',products:'Produtos & Serviços',sales:'Vendas',cashflow:'Fluxo de Caixa',reports:'Relatórios',settings:'Configurações'};
-function navigate(page){
+async function navigate(page){
   state.page=page;
   document.getElementById('page-title').textContent=pageNames[page];
   document.querySelectorAll('.nav-item').forEach(el=>el.classList.remove('active'));
   const idx=['dashboard','clients','products','sales','cashflow','reports','settings'].indexOf(page);
   if(idx>=0)document.querySelectorAll('.nav-item')[idx].classList.add('active');
   document.getElementById('sidebar').classList.remove('mobile-open');
-  renderPage(page);
+  await renderPage(page);
 }
 function toggleSidebar(){document.getElementById('sidebar').classList.toggle('collapsed');}
 function toggleMobile(){document.getElementById('sidebar').classList.toggle('mobile-open');}
@@ -484,24 +510,29 @@ function payLabel(m){return PAY_METHODS[m]?.label||m;}
 // ══════════════════════════════════════
 // RENDER ROUTER
 // ══════════════════════════════════════
-function renderPage(page){
+async function renderPage(page){
   const el=document.getElementById('content');
-  ({dashboard:renderDashboard,clients:renderClients,products:renderProducts,
-    sales:renderSales,cashflow:renderCashflow,reports:renderReports,settings:renderSettings}
-  [page]||renderDashboard)(el);
+  loading(el);
+  const fn = {dashboard:renderDashboard,clients:renderClients,products:renderProducts,
+    sales:renderSales,cashflow:renderCashflow,reports:renderReports,settings:renderSettings}[page]||renderDashboard;
+  await fn(el);
 }
 
 // ══════════════════════════════════════
 // DASHBOARD
 // ══════════════════════════════════════
-function renderDashboard(el){
+async function renderDashboard(el){
+  await loadDashboard();
+  await loadSales();
+  const d=state.dashboardData||{};
   const paidSales=state.sales.filter(s=>s.status==='paid');
-  const totalRevenue=paidSales.reduce((a,s)=>a+s.netTotal,0);
-  const totalProfit=paidSales.reduce((a,s)=>a+s.profit,0);
-  const totalOut=state.cashflow.filter(c=>c.type==='out').reduce((a,c)=>a+c.value,0);
-  const totalIn=state.cashflow.filter(c=>c.type==='in').reduce((a,c)=>a+c.value,0);
-  const pct=Math.min(100,(state.yearRevenue/MEI_LIMIT)*100);
-  const remaining=MEI_LIMIT-state.yearRevenue;
+  const totalRevenue=d.month_revenue!=null?d.month_revenue:paidSales.reduce((a,s)=>a+(s.netTotal||s.net_total||0),0);
+  const totalProfit=d.month_profit!=null?d.month_profit:paidSales.reduce((a,s)=>a+(parseFloat(s.profit)||0),0);
+  const totalOut=d.month_expenses||0;
+  const totalIn=totalRevenue;
+  const yearRev=d.year_revenue!=null?d.year_revenue:state.yearRevenue;
+  const pct=Math.min(100,(yearRev/MEI_LIMIT)*100);
+  const remaining=MEI_LIMIT-yearRev;
   const alertClass=pct>=90?'danger':pct>=75?'warning':'';
   const alertMsg=pct>=90
     ?`⚠️ ATENÇÃO: Você está a apenas ${R(remaining)} do limite MEI. Consulte um contador urgentemente.`
@@ -523,7 +554,7 @@ function renderDashboard(el){
       </div>
       <div class="progress-track"><div class="progress-fill ${alertClass}" style="width:${pct}%"></div></div>
       <div class="limit-info">
-        <span>Faturado: <strong>${R(state.yearRevenue)}</strong></span>
+        <span>Faturado: <strong>${R(yearRev)}</strong></span>
         <span>Limite: <strong>${R(MEI_LIMIT)}</strong></span>
         <span>Restante: <strong>${R(remaining)}</strong></span>
         <button class="btn btn-ghost btn-sm" onclick="openEditRevenueModal()" style="margin-left:auto">✏️ Corrigir faturamento</button>
@@ -598,7 +629,7 @@ function openEditRevenueModal(){
     <div class="form-row">
       <div class="form-group">
         <label>Faturamento atual</label>
-        <input type="text" value="${R(state.yearRevenue)}" disabled style="background:var(--bg);color:var(--muted)"/>
+        <input type="text" value="${R(yearRev)}" disabled style="background:var(--bg);color:var(--muted)"/>
       </div>
       <div class="form-group">
         <label>Novo valor (R$)</label>
@@ -630,23 +661,24 @@ function openEditRevenueModal(){
   `);
 }
 
-function saveRevenueEdit(){
+async function saveRevenueEdit(){
   const newVal=parseFloat(document.getElementById('rev-new').value);
   const reason=document.getElementById('rev-reason').value.trim();
   if(isNaN(newVal)||newVal<0)return toast('Informe um valor válido','error');
   if(!reason)return toast('Informe o motivo da correção','error');
-  const before=state.yearRevenue;
-  state.revenueHistory.push({ts:nowISO(),action:'edit',before,after:newVal,reason,user:state.user?.name||'Usuário'});
+  const result=await apiCall('/api/revenue-audit','POST',{after_val:newVal,reason});
+  if(!result)return;
   state.yearRevenue=newVal;
   _closeModal();
   toast('Faturamento corrigido e registrado no histórico!','success');
-  renderDashboard(document.getElementById('content'));
+  await renderDashboard(document.getElementById('content'));
 }
 
 // ══════════════════════════════════════
 // CLIENTS
 // ══════════════════════════════════════
-function renderClients(el){
+async function renderClients(el){
+  await loadClients();
   el.innerHTML=`
     <div class="section-header">
       <span class="section-title">👥 Clientes (${state.clients.length})</span>
@@ -686,22 +718,26 @@ function openClientModal(id){
       <button class="btn btn-primary" onclick="saveClient(${id||'null'})">💾 Salvar</button>
     </div>`);
 }
-function saveClient(id){
-  const obj={id:id||Date.now(),name:document.getElementById('c-name').value,cpf:document.getElementById('c-cpf').value,phone:document.getElementById('c-phone').value,email:document.getElementById('c-email').value,city:document.getElementById('c-city').value};
+async function saveClient(id){
+  const obj={name:document.getElementById('c-name').value,cpf:document.getElementById('c-cpf').value,phone:document.getElementById('c-phone').value,email:document.getElementById('c-email').value,city:document.getElementById('c-city').value};
   if(!obj.name)return toast('Nome é obrigatório','error');
-  if(id){const i=state.clients.findIndex(c=>c.id===id);state.clients[i]=obj;}else state.clients.push(obj);
+  const result = id
+    ? await apiCall('/api/clients/'+id,'PUT',obj)
+    : await apiCall('/api/clients','POST',obj);
+  if(!result)return;
   _closeModal();toast('Cliente salvo!');renderClients(document.getElementById('content'));
 }
-function deleteClient(id){
+async function deleteClient(id){
   if(!confirm('Remover este cliente?'))return;
-  state.clients=state.clients.filter(c=>c.id!==id);
+  await apiCall('/api/clients/'+id,'DELETE');
   toast('Cliente removido');renderClients(document.getElementById('content'));
 }
 
 // ══════════════════════════════════════
 // PRODUCTS (with stock)
 // ══════════════════════════════════════
-function renderProducts(el){
+async function renderProducts(el){
+  await loadProducts();
   el.innerHTML=`
     <div class="section-header">
       <span class="section-title">📦 Produtos & Serviços (${state.products.length})</span>
@@ -729,7 +765,8 @@ function renderProducts(el){
     </div>`;
 }
 function openProductModal(id){
-  const p=id?state.products.find(x=>x.id===id):{type:'service',margin:100,unit:'un',stock:0};
+  const p=id?state.products.find(x=>x.id===id):{type:'service',margin_pct:100,unit:'un',stock:0};
+  const margin = p.margin_pct ?? p.margin ?? 100;
   openModal(`
     <div class="modal-title">${id?'Editar':'Novo'} Produto/Serviço</div>
     <div class="form-group"><label>Nome</label><input id="p-name" value="${p.name||''}" placeholder="Ex: Coxinha"/></div>
@@ -744,7 +781,7 @@ function openProductModal(id){
     </div>
     <div class="form-row">
       <div class="form-group"><label>Custo (R$)</label><input id="p-cost" type="number" min="0" step="0.01" value="${p.cost||0}" oninput="calcPrice()"/></div>
-      <div class="form-group"><label>Margem de Lucro (%)</label><input id="p-margin" type="number" min="0" value="${p.margin||100}" oninput="calcPrice()"/></div>
+      <div class="form-group"><label>Margem de Lucro (%)</label><input id="p-margin" type="number" min="0" value="${margin}" oninput="calcPrice()"/></div>
     </div>
     <div class="calc-box" id="calc-box">
       <div class="calc-row"><span>Custo:</span><span id="calc-cost">R$ 0,00</span></div>
@@ -777,16 +814,19 @@ function calcPrice(){
   const lbl=document.getElementById('calc-margin-lbl');
   if(lbl)lbl.textContent=`Lucro (${margin}%):`;
 }
-function saveProduct(id){
+async function saveProduct(id){
   const type=document.getElementById('p-type').value;
-  const obj={id:id||Date.now(),name:document.getElementById('p-name').value,type,unit:document.getElementById('p-unit').value,cost:parseFloat(document.getElementById('p-cost').value)||0,margin:parseFloat(document.getElementById('p-margin').value)||0,price:parseFloat(document.getElementById('p-price').value)||0,stock:type==='product'?(parseInt(document.getElementById('p-stock').value)||0):null};
+  const obj={name:document.getElementById('p-name').value,type,unit:document.getElementById('p-unit').value,cost:parseFloat(document.getElementById('p-cost').value)||0,margin_pct:parseFloat(document.getElementById('p-margin').value)||0,price:parseFloat(document.getElementById('p-price').value)||0,stock:type==='product'?(parseInt(document.getElementById('p-stock').value)||0):null};
   if(!obj.name)return toast('Nome é obrigatório','error');
-  if(id){const i=state.products.findIndex(p=>p.id===id);state.products[i]=obj;}else state.products.push(obj);
+  const result = id
+    ? await apiCall('/api/products/'+id,'PUT',obj)
+    : await apiCall('/api/products','POST',obj);
+  if(!result)return;
   _closeModal();toast('Item salvo!');renderProducts(document.getElementById('content'));
 }
-function deleteProduct(id){
+async function deleteProduct(id){
   if(!confirm('Remover este item?'))return;
-  state.products=state.products.filter(p=>p.id!==id);
+  await apiCall('/api/products/'+id,'DELETE');
   toast('Item removido');renderProducts(document.getElementById('content'));
 }
 function openStockModal(id){
@@ -813,21 +853,22 @@ function openStockModal(id){
       <button class="btn btn-primary" onclick="saveStock(${id})">💾 Confirmar</button>
     </div>`);
 }
-function saveStock(id){
-  const p=state.products.find(x=>x.id===id);
+async function saveStock(id){
   const op=document.getElementById('stock-op').value;
   const qty=parseInt(document.getElementById('stock-qty').value)||0;
-  if(op==='add')p.stock+=qty;
-  else if(op==='sub')p.stock=Math.max(0,p.stock-qty);
-  else p.stock=qty;
-  _closeModal();toast(`Estoque atualizado: ${p.stock} un`,'success');
-  renderProducts(document.getElementById('content'));
+  const reason=document.getElementById('stock-reason').value||'Ajuste manual';
+  const result=await apiCall('/api/products/'+id+'/stock','PATCH',{op,qty,reason});
+  if(!result)return;
+  _closeModal();toast(`Estoque atualizado: ${result.stock} un`,'success');
+  await renderProducts(document.getElementById('content'));
 }
 
 // ══════════════════════════════════════
 // SALES — multi-item + payment method
 // ══════════════════════════════════════
-function renderSales(el){
+async function renderSales(el){
+  await loadSales();
+  await loadProducts();
   const paid=state.sales.filter(s=>s.status==='paid');
   const total=paid.reduce((a,s)=>a+s.netTotal,0);
   const profit=paid.reduce((a,s)=>a+s.profit,0);
@@ -1075,79 +1116,58 @@ function updateSaleSummary(){
   if(sumNet)sumNet.textContent=R(net);
 }
 
-function saveSale(){
+async function saveSale(){
   if(!saleItems.length)return toast('Adicione pelo menos um item','error');
   const feePct=PAY_METHODS[selectedPayMethod].hasFee?(parseFloat(document.getElementById('pay-fee')?.value)||0):0;
   const gross=saleItems.reduce((a,i)=>a+i.subtotal,0);
   const feeVal=+(gross*feePct/100).toFixed(2);
   const net=+(gross-feeVal).toFixed(2);
   const profit=+(saleItems.reduce((a,i)=>a+(i.subtotal-i.cost*i.qty),0)).toFixed(2);
-  const clientId=parseInt(document.getElementById('s-client').value)||null;
+  const clientId=document.getElementById('s-client').value||null;
   const client=clientId?state.clients.find(c=>c.id===clientId):null;
   const status=document.getElementById('s-status').value;
   const date=document.getElementById('s-date').value;
 
-  const sale={
-    id:Date.now(),date,
-    clientId,clientName:client?client.name:'Cliente avulso',
-    items:saleItems.map(i=>({...i})),
+  if(PAY_METHODS[selectedPayMethod].hasFee) state.payFees[selectedPayMethod]=feePct;
+
+  const payload={
+    client_id:clientId||null,
+    client_name:client?client.name:'Cliente avulso',
+    items:saleItems.map(i=>({product_id:i.productId,product_name:i.name,qty:i.qty,unit_price:i.unitPrice,cost:i.cost,subtotal:i.subtotal})),
     total:+gross.toFixed(2),profit,status,
-    payMethod:selectedPayMethod,feePct,feeValue:feeVal,netTotal:net,
+    pay_method:selectedPayMethod,fee_pct:feePct,fee_value:feeVal,net_total:net,
+    sale_date:date,
   };
-  state.sales.push(sale);
 
-  // Save fee config for future
-  if(PAY_METHODS[selectedPayMethod].hasFee)state.payFees[selectedPayMethod]=feePct;
-
-  // Update stock for products
-  saleItems.forEach(item=>{
-    const p=state.products.find(x=>x.id===item.productId);
-    if(p&&p.type==='product'&&p.stock!==null)p.stock=Math.max(0,p.stock-item.qty);
-  });
-
-  // Cashflow entry if paid
-  if(status==='paid'){
-    const desc=`Venda #${sale.id} — ${saleItems.map(i=>`${i.qty}× ${i.name}`).join(', ')}`;
-    state.cashflow.push({id:Date.now()+1,date,desc,type:'in',value:net,saleId:sale.id,editable:true,history:[]});
-    state.yearRevenue+=net;
-  }
+  const result = await apiCall('/api/sales','POST',payload);
+  if(!result)return;
 
   _closeModal();
   toast(`Venda registrada! ${R(net)} via ${payLabel(selectedPayMethod)}`,'success');
-  renderSales(document.getElementById('content'));
+  await renderSales(document.getElementById('content'));
 }
 
-function toggleSaleStatus(id){
+async function toggleSaleStatus(id){
   const s=state.sales.find(x=>x.id===id);
   if(!s)return;
-  if(s.status==='pending'){
-    s.status='paid';
-    const desc=`Venda #${s.id} — ${s.items.map(i=>`${i.qty}× ${i.name}`).join(', ')}`;
-    state.cashflow.push({id:Date.now(),date:s.date,desc,type:'in',value:s.netTotal,saleId:s.id,editable:true,history:[]});
-    state.yearRevenue+=s.netTotal;
-    // Update stock now
-    s.items.forEach(item=>{
-      const p=state.products.find(x=>x.id===item.productId);
-      if(p&&p.type==='product'&&p.stock!==null)p.stock=Math.max(0,p.stock-item.qty);
-    });
-    toast('Pagamento confirmado! ✅');
-  }else{
-    s.status='pending';
-    toast('Venda marcada como pendente');
-  }
-  renderSales(document.getElementById('content'));
+  const newStatus=s.status==='pending'?'paid':'pending';
+  const result=await apiCall('/api/sales/'+id+'/status','PATCH',{status:newStatus});
+  if(!result)return;
+  toast(newStatus==='paid'?'Pagamento confirmado! ✅':'Venda marcada como pendente');
+  await renderSales(document.getElementById('content'));
 }
 
-function deleteSale(id){
+async function deleteSale(id){
   if(!confirm('Remover esta venda?'))return;
-  state.sales=state.sales.filter(s=>s.id!==id);
-  toast('Venda removida');renderSales(document.getElementById('content'));
+  await apiCall('/api/sales/'+id,'DELETE');
+  toast('Venda removida');await renderSales(document.getElementById('content'));
 }
 
 // ══════════════════════════════════════
 // CASHFLOW — with edit + audit history
 // ══════════════════════════════════════
-function renderCashflow(el){
+async function renderCashflow(el){
+  await loadCashflow();
   const totalIn=state.cashflow.filter(c=>c.type==='in').reduce((a,c)=>a+c.value,0);
   const totalOut=state.cashflow.filter(c=>c.type==='out').reduce((a,c)=>a+c.value,0);
   const balance=totalIn-totalOut;
@@ -1201,15 +1221,15 @@ function openCashModal(){
       <button class="btn btn-primary" onclick="saveCash()">💾 Salvar</button>
     </div>`);
 }
-function saveCash(){
+async function saveCash(){
   const desc=document.getElementById('cf-desc').value;
   const value=parseFloat(document.getElementById('cf-value').value)||0;
   if(!desc)return toast('Descrição é obrigatória','error');
   if(!value)return toast('Informe o valor','error');
-  const obj={id:Date.now(),date:document.getElementById('cf-date').value,desc,type:document.getElementById('cf-type').value,value,editable:true,history:[]};
-  if(obj.type==='in')state.yearRevenue+=value;
-  state.cashflow.push(obj);
-  _closeModal();toast('Lançamento salvo!');renderCashflow(document.getElementById('content'));
+  const obj={description:desc,type:document.getElementById('cf-type').value,value,entry_date:document.getElementById('cf-date').value};
+  const result=await apiCall('/api/cashflow','POST',obj);
+  if(!result)return;
+  _closeModal();toast('Lançamento salvo!');await renderCashflow(document.getElementById('content'));
 }
 
 // ── Edit cashflow entry with audit ──
@@ -1238,22 +1258,16 @@ yp="number" id="ec-value" step="0.01" min="0" value="${c.value.toFixed(2)}"/>
       <button class="btn btn-primary" onclick="saveEditCash(${id})">💾 Salvar</button>
     </div>`);
 }
-function saveEditCash(id){
-  const c=state.cashflow.find(x=>x.id===id);
-  if(!c)return;
+async function saveEditCash(id){
   const newVal=parseFloat(document.getElementById('ec-value').value);
   const reason=document.getElementById('ec-reason').value.trim();
   const newDesc=document.getElementById('ec-desc').value.trim();
   if(isNaN(newVal)||newVal<=0)return toast('Valor inválido','error');
   if(!reason)return toast('Informe o motivo da correção','error');
-  const before=c.value;
-  c.history=c.history||[];
-  c.history.push({ts:nowISO(),before,after:newVal,reason,user:state.user?.name||'Usuário',descBefore:c.desc});
-  if(c.type==='in')state.yearRevenue=state.yearRevenue-before+newVal;
-  c.value=newVal;
-  if(newDesc)c.desc=newDesc;
+  const result=await apiCall('/api/cashflow/'+id,'PUT',{value:newVal,description:newDesc,reason});
+  if(!result)return;
   _closeModal();toast('Lançamento corrigido e auditado!','success');
-  renderCashflow(document.getElementById('content'));
+  await renderCashflow(document.getElementById('content'));
 }
 
 function viewCashHistory(id){
@@ -1274,16 +1288,18 @@ function viewCashHistory(id){
     <div class="form-actions"><button class="btn btn-ghost" onclick="_closeModal()">Fechar</button></div>`);
 }
 
-function deleteCash(id){
+async function deleteCash(id){
   if(!confirm('Remover este lançamento?'))return;
-  state.cashflow=state.cashflow.filter(c=>c.id!==id);
-  toast('Lançamento removido');renderCashflow(document.getElementById('content'));
+  await apiCall('/api/cashflow/'+id,'DELETE');
+  toast('Lançamento removido');await renderCashflow(document.getElementById('content'));
 }
 
 // ══════════════════════════════════════
 // REPORTS
 // ══════════════════════════════════════
-function renderReports(el){
+async function renderReports(el){
+  await loadSales();
+  await loadCashflow();
   const totalIn=state.cashflow.filter(c=>c.type==='in').reduce((a,c)=>a+c.value,0);
   const totalOut=state.cashflow.filter(c=>c.type==='out').reduce((a,c)=>a+c.value,0);
   const profit=totalIn-totalOut;
