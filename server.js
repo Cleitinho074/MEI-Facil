@@ -18,17 +18,22 @@ const db  = new Pool({ connectionString: process.env.DATABASE_URL,
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false });
 
 // ── Middleware ─────────────────────────────────────────────────
-app.use(helmet());
-app.use(cors({
-  origin: '*',
-  methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
-  allowedHeaders: ['Content-Type','Authorization'],
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", "data:"],
+      connectSrc: ["'self'"],
+    },
+  },
 }));
-app.options('*', cors()); // preflight
+app.use(cors({ origin: process.env.FRONTEND_URL || '*' }));
 app.use(express.json({ limit: '10kb' }));
 app.use('/api/auth', rateLimit({ windowMs: 15*60*1000, max: 20, message: { error:'Muitas tentativas. Aguarde.' }}));
 app.use('/api',      rateLimit({ windowMs: 15*60*1000, max: 300 }));
-app.use(express.static(path.join(__dirname, '.')));
+app.use(express.static(path.join(__dirname)));
 
 // ── Auth Middleware ─────────────────────────────────────────────
 const auth = (req, res, next) => {
@@ -139,10 +144,10 @@ app.post  ('/api/products',     auth, async (req, res) => {
   res.status(201).json(rows[0]);
 });
 app.put   ('/api/products/:id', auth, async (req, res) => {
-  const { name, type, unit, cost, margin_pct, price, stock } = req.body;
+  const { name, type, unit, cost, margin_pct, price } = req.body;
   const { rows } = await Q(
-    'UPDATE products SET name=$1,type=$2,unit=$3,cost=$4,margin_pct=$5,price=$6,stock=$7 WHERE id=$8 AND user_id=$9 RETURNING *',
-    [name, type, unit, cost, margin_pct, price, stock, req.params.id, req.userId]
+    'UPDATE products SET name=$1,type=$2,unit=$3,cost=$4,margin_pct=$5,price=$6 WHERE id=$7 AND user_id=$8 RETURNING *',
+    [name, type, unit, cost, margin_pct, price, req.params.id, req.userId]
   );
   rows.length ? res.json(rows[0]) : res.status(404).json({ error: 'Não encontrado' });
 });
@@ -155,7 +160,7 @@ app.delete('/api/products/:id', auth, async (req, res) => {
 // SALES
 // ══════════════════════════════════════════════════════════════
 app.get('/api/sales', auth, async (req, res) => {
-  const { status, from, to, limit=100 } = req.query;
+  const { status, from, to, limit=50 } = req.query;
   let sql = 'SELECT * FROM sales WHERE user_id=$1';
   const params = [req.userId];
   if (status) { params.push(status); sql += ` AND status=$${params.length}`; }
@@ -164,54 +169,26 @@ app.get('/api/sales', auth, async (req, res) => {
   sql += ` ORDER BY sale_date DESC, created_at DESC LIMIT $${params.length+1}`;
   params.push(limit);
   const { rows } = await Q(sql, params);
-  // Attach items to each sale
-  for (const sale of rows) {
-    const items = await Q('SELECT * FROM sale_items WHERE sale_id=$1', [sale.id]);
-    sale.items = items.rows.map(i => ({
-      productId: i.product_id, name: i.product_name,
-      qty: i.qty, unitPrice: parseFloat(i.unit_price),
-      cost: parseFloat(i.cost), subtotal: parseFloat(i.subtotal)
-    }));
-  }
   res.json(rows);
 });
 
 app.post('/api/sales', auth, async (req, res) => {
-  const { client_id, client_name, items=[], total, profit=0, status='pending',
-          pay_method='dinheiro', fee_pct=0, fee_value=0, net_total, sale_date, notes } = req.body;
-  if (!items.length) return res.status(400).json({ error: 'Adicione pelo menos um item' });
-  try {
-    const { rows } = await Q(
-      `INSERT INTO sales(user_id,client_id,client_name,total,profit,status,pay_method,fee_pct,fee_value,net_total,sale_date,paid_at,notes)
-       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
-      [req.userId, client_id||null, client_name||'Cliente avulso', total, profit, status,
-       pay_method, fee_pct, fee_value, net_total||total, sale_date||new Date(),
-       status==='paid'?new Date():null, notes]
-    );
-    const sale = rows[0];
-    // Insert sale items
-    for (const item of items) {
-      await Q(
-        `INSERT INTO sale_items(sale_id,user_id,product_id,product_name,qty,unit_price,cost,subtotal)
-         VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,
-        [sale.id, req.userId, item.product_id||null, item.product_name, item.qty, item.unit_price, item.cost||0, item.subtotal]
-      );
-      // Update stock
-      if (item.product_id) {
-        await Q("UPDATE products SET stock=GREATEST(0,COALESCE(stock,0)-$1) WHERE id=$2 AND user_id=$3 AND type='product'",
-          [item.qty, item.product_id, req.userId]);
-      }
-    }
-    // Auto cashflow if paid
-    if (status === 'paid') {
-      const desc = `Venda #${sale.id} — ${items.map(i=>`${i.qty}× ${i.product_name}`).join(', ')}`;
-      await Q(`INSERT INTO cashflow_entries(user_id,description,type,value,entry_date,sale_id)
-               VALUES($1,$2,'in',$3,$4,$5)`,
-        [req.userId, desc, net_total||total, sale_date||new Date(), sale.id]);
-    }
-    sale.items = items;
-    res.status(201).json(sale);
-  } catch(e) { console.error(e); res.status(500).json({ error: 'Erro ao salvar venda' }); }
+  const { client_id, product_id, client_name, product_name, qty=1, unit_price, status='pending', notes, sale_date } = req.body;
+  if (!unit_price) return res.status(400).json({ error: 'Preço unitário é obrigatório' });
+  const total = qty * unit_price;
+  const { rows } = await Q(
+    `INSERT INTO sales(user_id,client_id,product_id,client_name,product_name,qty,unit_price,total,status,notes,sale_date,paid_at)
+     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+    [req.userId, client_id||null, product_id||null, client_name, product_name, qty, unit_price, total, status, notes,
+     sale_date||new Date(), status==='paid'?new Date():null]
+  );
+  // Auto-create cashflow entry if paid
+  if (status === 'paid') {
+    await Q(`INSERT INTO cashflow_entries(user_id,description,type,value,entry_date,sale_id)
+             VALUES($1,$2,'in',$3,$4,$5)`,
+      [req.userId, `Venda: ${product_name}`, total, sale_date||new Date(), rows[0].id]);
+  }
+  res.status(201).json(rows[0]);
 });
 
 app.patch('/api/sales/:id/status', auth, async (req, res) => {
@@ -310,81 +287,6 @@ app.get('/api/reports/annual', auth, async (req, res) => {
     [req.userId, year]
   );
   res.json(rows);
-});
-
-// PUT /api/cashflow/:id — edit with audit trail
-app.put('/api/cashflow/:id', auth, async (req, res) => {
-  const { value, description, reason } = req.body;
-  if (!value || !reason) return res.status(400).json({ error: 'Valor e motivo são obrigatórios' });
-  try {
-    const existing = await Q('SELECT * FROM cashflow_entries WHERE id=$1 AND user_id=$2', [req.params.id, req.userId]);
-    if (!existing.rows.length) return res.status(404).json({ error: 'Não encontrado' });
-    const old = existing.rows[0];
-    const newHistory = [...(old.edit_history || []), {
-      ts: new Date().toISOString(), before: old.value, after: value,
-      reason, user_id: req.userId, desc_before: old.description
-    }];
-    const { rows } = await Q(
-      `UPDATE cashflow_entries SET value=$1, description=$2, edit_history=$3 WHERE id=$4 AND user_id=$5 RETURNING *`,
-      [value, description || old.description, JSON.stringify(newHistory), req.params.id, req.userId]
-    );
-    res.json(rows[0]);
-  } catch(e) { res.status(500).json({ error: 'Erro ao editar' }); }
-});
-
-// PATCH /api/products/:id/stock
-app.patch('/api/products/:id/stock', auth, async (req, res) => {
-  const { op, qty } = req.body;
-  try {
-    let sql;
-    if (op === 'add') sql = 'UPDATE products SET stock=COALESCE(stock,0)+$1 WHERE id=$2 AND user_id=$3 RETURNING *';
-    else if (op === 'sub') sql = 'UPDATE products SET stock=GREATEST(0,COALESCE(stock,0)-$1) WHERE id=$2 AND user_id=$3 RETURNING *';
-    else sql = 'UPDATE products SET stock=$1 WHERE id=$2 AND user_id=$3 RETURNING *';
-    const { rows } = await Q(sql, [qty, req.params.id, req.userId]);
-    if (!rows.length) return res.status(404).json({ error: 'Produto não encontrado' });
-    res.json(rows[0]);
-  } catch(e) { res.status(500).json({ error: 'Erro ao ajustar estoque' }); }
-});
-
-// GET /api/revenue-audit
-app.get('/api/revenue-audit', auth, async (req, res) => {
-  try {
-    const { rows } = await Q(
-      'SELECT * FROM revenue_audit WHERE user_id=$1 ORDER BY created_at DESC',
-      [req.userId]
-    );
-    res.json(rows);
-  } catch(e) { res.status(500).json({ error: 'Erro' }); }
-});
-
-// POST /api/revenue-audit
-app.post('/api/revenue-audit', auth, async (req, res) => {
-  const { after_val, reason } = req.body;
-  if (!after_val || !reason) return res.status(400).json({ error: 'Campos obrigatórios' });
-  try {
-    // Get current year revenue as before_val
-    const rev = await Q(
-      `SELECT COALESCE(SUM(total),0) total FROM sales WHERE user_id=$1 AND status='paid' AND EXTRACT(YEAR FROM sale_date)=EXTRACT(YEAR FROM NOW())`,
-      [req.userId]
-    );
-    const before_val = parseFloat(rev.rows[0].total);
-    const { rows } = await Q(
-      'INSERT INTO revenue_audit(user_id,before_val,after_val,reason) VALUES($1,$2,$3,$4) RETURNING *',
-      [req.userId, before_val, after_val, reason]
-    );
-    res.status(201).json(rows[0]);
-  } catch(e) { res.status(500).json({ error: 'Erro ao salvar auditoria' }); }
-});
-
-// GET /api/sales/:id/items — get items for a sale
-app.get('/api/sales/:id/items', auth, async (req, res) => {
-  try {
-    const { rows } = await Q(
-      'SELECT * FROM sale_items WHERE sale_id=$1 AND user_id=$2',
-      [req.params.id, req.userId]
-    );
-    res.json(rows);
-  } catch(e) { res.status(500).json({ error: 'Erro' }); }
 });
 
 // ── Health ──────────────────────────────────────────────────
