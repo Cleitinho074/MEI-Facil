@@ -68,7 +68,7 @@ app.post('/api/auth/register', async (req, res) => {
 
     const hash = await bcrypt.hash(password, 12);
     const { rows } = await Q(
-      `INSERT INTO users(name,email,password_hash,cpf_cnpj) VALUES($1,$2,$3,$4) RETURNING id,name,email`,
+      `INSERT INTO users(name,email,password_hash,cpf_cnpj) VALUES($1,$2,$3,$4) RETURNING id,name,email,cpf_cnpj,razao_social`,
       [name, email.toLowerCase(), hash, cpf_cnpj]
     );
     res.status(201).json({ token: signToken(rows[0].id), user: rows[0] });
@@ -98,6 +98,41 @@ app.get('/api/auth/me', auth, async (req, res) => {
     if (!rows.length) return res.status(404).json({ error: 'Usuário não encontrado' });
     res.json({ user: rows[0] });
   } catch (e) { res.status(500).json({ error: 'Erro ao buscar usuário' }); }
+});
+
+// PATCH /api/auth/password — troca de senha (exige senha atual correta)
+app.patch('/api/auth/password', auth, async (req, res) => {
+  try {
+    const { current_password, new_password } = req.body;
+    if (!current_password || !new_password)
+      return res.status(400).json({ error: 'Informe a senha atual e a nova senha' });
+    if (new_password.length < 8)
+      return res.status(400).json({ error: 'A nova senha deve ter no mínimo 8 caracteres' });
+
+    const { rows } = await Q('SELECT password_hash FROM users WHERE id=$1', [req.userId]);
+    if (!rows.length) return res.status(404).json({ error: 'Usuário não encontrado' });
+
+    const ok = await bcrypt.compare(current_password, rows[0].password_hash);
+    if (!ok) return res.status(401).json({ error: 'Senha atual incorreta' });
+
+    const newHash = await bcrypt.hash(new_password, 12);
+    await Q('UPDATE users SET password_hash=$1, updated_at=NOW() WHERE id=$2', [newHash, req.userId]);
+    res.json({ success: true });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Erro ao alterar senha' }); }
+});
+
+// PUT /api/auth/profile — atualiza nome, CNPJ e razão social
+app.put('/api/auth/profile', auth, async (req, res) => {
+  try {
+    const { name, cpf_cnpj, razao_social } = req.body;
+    if (!name || !name.trim()) return res.status(400).json({ error: 'Nome é obrigatório' });
+    const { rows } = await Q(
+      `UPDATE users SET name=$1, cpf_cnpj=$2, razao_social=$3, updated_at=NOW()
+       WHERE id=$4 RETURNING id, name, email, cpf_cnpj, razao_social`,
+      [name.trim(), cpf_cnpj || null, razao_social || null, req.userId]
+    );
+    res.json({ user: rows[0] });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Erro ao atualizar perfil' }); }
 });
 
 // ══════════════════════════════════════════════════════════════
