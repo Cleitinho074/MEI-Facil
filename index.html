@@ -1537,12 +1537,12 @@ function renderSettings(el){
       <div class="card" style="margin-bottom:16px">
         <div class="section-title" style="margin-bottom:16px">👤 Minha Conta</div>
         <div class="form-group"><label>Nome completo</label><input value="${state.user?.name||''}" id="set-name"/></div>
-        <div class="form-group"><label>E-mail</label><input type="email" value="${state.user?.email||''}" id="set-email"/></div>
+        <div class="form-group"><label>E-mail</label><input type="email" value="${state.user?.email||''}" id="set-email" disabled style="background:var(--bg);color:var(--muted)"/></div>
         <div class="form-row">
-          <div class="form-group"><label>CNPJ MEI</label><input placeholder="00.000.000/0001-00" id="set-cnpj"/></div>
-          <div class="form-group"><label>Razão Social</label><input placeholder="João da Silva 00000000001" id="set-razao"/></div>
+          <div class="form-group"><label>CNPJ MEI</label><input value="${state.user?.cpf_cnpj||''}" placeholder="00.000.000/0001-00" id="set-cnpj"/></div>
+          <div class="form-group"><label>Razão Social</label><input value="${state.user?.razao_social||''}" placeholder="João da Silva 00000000001" id="set-razao"/></div>
         </div>
-        <button class="btn btn-primary" onclick="toast('Configurações salvas! ✅')">💾 Salvar</button>
+        <button class="btn btn-primary" onclick="saveProfile()">💾 Salvar</button>
       </div>
       <div class="card" style="margin-bottom:16px">
         <div class="section-title" style="margin-bottom:4px">🏧 Taxas da Maquininha / Gateway</div>
@@ -1559,10 +1559,10 @@ function renderSettings(el){
       </div>
       <div class="card" style="margin-bottom:16px">
         <div class="section-title" style="margin-bottom:16px">🔐 Segurança</div>
-        <div class="form-group"><label>Senha atual</label><input type="password" placeholder="••••••••"/></div>
-        <div class="form-group"><label>Nova senha</label><input type="password" placeholder="••••••••"/></div>
-        <div class="form-group"><label>Confirmar nova senha</label><input type="password" placeholder="••••••••"/></div>
-        <button class="btn btn-ghost" onclick="toast('Senha alterada com sucesso!')">🔑 Alterar Senha</button>
+        <div class="form-group"><label>Senha atual</label><input type="password" id="pw-current" placeholder="••••••••"/></div>
+        <div class="form-group"><label>Nova senha</label><input type="password" id="pw-new" placeholder="Mínimo 8 caracteres"/></div>
+        <div class="form-group"><label>Confirmar nova senha</label><input type="password" id="pw-confirm" placeholder="••••••••"/></div>
+        <button class="btn btn-ghost" id="pw-submit-btn" onclick="changePassword()">🔑 Alterar Senha</button>
       </div>
       <div class="card" style="background:var(--red-x);border:1px solid var(--red-l)">
         <div class="section-title" style="margin-bottom:8px;color:var(--red)">⚠️ Sair da conta</div>
@@ -1577,6 +1577,41 @@ function saveFeesConfig(){
     if(input)state.payFees[k]=parseFloat(input.value)||0;
   });
   toast('Taxas salvas! Aplicadas nas próximas vendas ✅','success');
+}
+function saveProfile(){
+  const name=document.getElementById('set-name').value.trim();
+  const cpf_cnpj=document.getElementById('set-cnpj').value.trim();
+  const razao_social=document.getElementById('set-razao').value.trim();
+  if(!name)return toast('Nome é obrigatório','error');
+  saveProfileAsync({name,cpf_cnpj,razao_social});
+}
+async function saveProfileAsync(payload){
+  const data = await apiCall('/api/auth/profile','PUT',payload);
+  if(!data)return;
+  state.user={...state.user,...data.user};
+  document.getElementById('user-badge').textContent=(data.user.name||'U')[0].toUpperCase();
+  toast('Dados da conta salvos! ✅','success');
+}
+function changePassword(){
+  const current=document.getElementById('pw-current').value;
+  const newPass=document.getElementById('pw-new').value;
+  const confirm=document.getElementById('pw-confirm').value;
+  if(!current||!newPass||!confirm)return toast('Preencha os três campos de senha','error');
+  if(newPass.length<8)return toast('A nova senha deve ter no mínimo 8 caracteres','error');
+  if(newPass!==confirm)return toast('A confirmação não corresponde à nova senha','error');
+  changePasswordAsync(current,newPass);
+}
+async function changePasswordAsync(current_password,new_password){
+  const btn=document.getElementById('pw-submit-btn');
+  const label=btn.textContent;
+  btn.disabled=true;btn.textContent='⏳ Aguarde...';
+  const data = await apiCall('/api/auth/password','PATCH',{current_password,new_password});
+  btn.disabled=false;btn.textContent=label;
+  if(!data)return;
+  document.getElementById('pw-current').value='';
+  document.getElementById('pw-new').value='';
+  document.getElementById('pw-confirm').value='';
+  toast('Senha alterada com sucesso!','success');
 }
 
 // ══════════════════════════════════════
