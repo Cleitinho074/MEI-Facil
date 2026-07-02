@@ -160,6 +160,10 @@ input:focus,select:focus,textarea:focus{border-color:var(--blue-l)}
 .auth-logo-sub{font-size:13px;color:var(--muted)}
 .auth-btn{width:100%;padding:12px;font-size:16px}
 
+/* Client name link in table */
+.client-link{color:var(--blue-l);cursor:pointer;font-weight:700;text-decoration:none;border-bottom:1px dashed var(--blue-l);}
+.client-link:hover{color:var(--blue);border-bottom-color:var(--blue);}
+
 /* Stock badge */
 .stock-low{color:var(--red);font-weight:700}
 .stock-ok{color:var(--green-l)}
@@ -699,7 +703,7 @@ function renderClients(el){
         <thead><tr><th>Nome</th><th>CPF</th><th>Telefone</th><th>E-mail</th><th>Cidade</th><th>Ações</th></tr></thead>
         <tbody>
           ${state.clients.map(c=>`<tr>
-            <td><strong>${c.name}</strong></td><td style="color:var(--muted)">${c.cpf||''}</td>
+            <td><span class="client-link" onclick="openClientReport('${c.id}')">${c.name}</span></td><td style="color:var(--muted)">${c.cpf||''}</td>
             <td>${c.phone||''}</td><td>${c.email||''}</td><td>${c.city||''}</td>
             <td>
               <button class="btn btn-ghost btn-sm" onclick="openClientModal('${c.id}')">✏️</button>
@@ -1404,6 +1408,7 @@ function renderReports(el){
       <div class="tab active" onclick="reportTab('geral',this)">📊 Geral</div>
       <div class="tab" onclick="reportTab('produtos',this)">📦 Por Produto</div>
       <div class="tab" onclick="reportTab('pagamentos',this)">💳 Pagamentos</div>
+      <div class="tab" onclick="reportTab('clientes',this)">👤 Clientes</div>
       <div class="tab" onclick="reportTab('mei',this)">🏛️ MEI</div>
     </div>
     <div id="report-content">${reportGeral(totalIn,totalOut,profit,topSales)}</div>`;
@@ -1417,6 +1422,7 @@ function reportTab(tab,el){
   if(tab==='geral')c.innerHTML=reportGeral(d.totalIn,d.totalOut,d.profit,d.topSales);
   if(tab==='produtos')c.innerHTML=reportProdutos();
   if(tab==='pagamentos')c.innerHTML=reportPagamentos();
+  if(tab==='clientes')c.innerHTML=reportClientes();
   if(tab==='mei')c.innerHTML=reportMEI();
 }
 function reportGeral(totalIn,totalOut,profit,topSales){
@@ -1503,6 +1509,131 @@ function reportPagamentos(){
       <div style="font-size:12px;color:var(--muted);margin-top:6px">Ajuste as taxas em Configurações → Taxas da maquininha</div>
     </div>`;
 }
+function reportClientes(highlightId){
+  // Build per-client stats from sales
+  const byClient={};
+  state.sales.filter(s=>s.status==='paid').forEach(s=>{
+    const key = s.clientId || '__avulso__';
+    const name = s.clientName || 'Cliente avulso';
+    if(!byClient[key]) byClient[key]={id:key, name, total:0, visits:0, items:{}};
+    byClient[key].total   += s.netTotal;
+    byClient[key].visits  += 1;
+    s.items.forEach(i=>{
+      byClient[key].items[i.name] = (byClient[key].items[i.name]||0) + i.qty;
+    });
+  });
+  const sorted = Object.values(byClient).sort((a,b)=>b.total-a.total);
+  if(!sorted.length) return `<div class="card" style="text-align:center;padding:40px;color:var(--muted)">Nenhuma venda registrada ainda.</div>`;
+
+  const topN = 5; // medal podium
+  return `
+    <div class="cards-grid" style="margin-bottom:20px">
+      <div class="card card-metric"><div class="card-label">Clientes com compras</div><div class="card-value blue">${sorted.length}</div></div>
+      <div class="card card-metric"><div class="card-label">Melhor cliente</div><div class="card-value green" style="font-size:18px">${sorted[0]?.name||'—'}</div><div class="card-sub">${R(sorted[0]?.total||0)}</div></div>
+      <div class="card card-metric"><div class="card-label">Total em vendas</div><div class="card-value green">${R(sorted.reduce((a,c)=>a+c.total,0))}</div></div>
+    </div>
+    <div class="card">
+      <div class="section-title" style="margin-bottom:16px">🏆 Ranking de Clientes</div>
+      <table>
+        <thead><tr><th>#</th><th>Cliente</th><th>Compras</th><th>Total gasto</th><th>Item favorito</th><th>Detalhes</th></tr></thead>
+        <tbody>
+          ${sorted.map((c,i)=>{
+            const topItem = Object.entries(c.items).sort((a,b)=>b[1]-a[1])[0];
+            const medal = i===0?'🥇':i===1?'🥈':i===2?'🥉':'';
+            const isHighlight = highlightId && (c.id===highlightId||c.id==='__avulso__'&&highlightId==='__avulso__');
+            return `<tr style="${isHighlight?'background:var(--blue-x);':''}">
+              <td><strong>${medal||'#'+(i+1)}</strong></td>
+              <td><span class="client-link" onclick="openClientReport('${c.id}')">${c.name}</span></td>
+              <td style="text-align:center">${c.visits}x</td>
+              <td style="font-weight:700;color:var(--green-l)">${R(c.total)}</td>
+              <td style="font-size:13px;color:var(--muted)">${topItem?`${topItem[0]} (${topItem[1]}x)`:'—'}</td>
+              <td><button class="btn btn-ghost btn-sm" onclick="openClientReport('${c.id}')">Ver histórico</button></td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+function openClientReport(clientId){
+  // Switch to reports → clientes tab and highlight this client
+  navigate('reports').then(()=>{
+    // Wait for render then switch tab
+    const tab = document.querySelector('#report-tabs .tab:nth-child(4)');
+    if(tab) reportTab('clientes', tab);
+    // Rebuild content with highlight
+    const c = document.getElementById('report-content');
+    if(c) c.innerHTML = reportClientes(clientId);
+    // Scroll to highlighted row & open detail modal
+    openClientDetailModal(clientId);
+  });
+}
+
+function openClientDetailModal(clientId){
+  // Build full purchase history for this client
+  const clientSales = state.sales.filter(s=>s.status==='paid' && (s.clientId===clientId||(clientId==='__avulso__'&&!s.clientId)));
+  if(!clientSales.length){
+    toast('Nenhuma compra encontrada para este cliente','error');
+    return;
+  }
+  const clientName = clientSales[0]?.clientName || 'Cliente avulso';
+  const totalGasto  = clientSales.reduce((a,s)=>a+s.netTotal,0);
+  const totalVisits = clientSales.length;
+
+  // Item frequency
+  const itemFreq={};
+  clientSales.forEach(s=>s.items.forEach(i=>{itemFreq[i.name]=(itemFreq[i.name]||0)+i.qty;}));
+  const topItems = Object.entries(itemFreq).sort((a,b)=>b[1]-a[1]);
+
+  openModal(`
+    <div class="modal-title">👤 ${clientName}</div>
+    <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:20px">
+      <div class="card card-metric" style="flex:1;min-width:120px;padding:14px">
+        <div class="card-label">Total gasto</div>
+        <div class="card-value green" style="font-size:20px">${R(totalGasto)}</div>
+      </div>
+      <div class="card card-metric" style="flex:1;min-width:120px;padding:14px">
+        <div class="card-label">Visitas</div>
+        <div class="card-value blue" style="font-size:20px">${totalVisits}x</div>
+      </div>
+      <div class="card card-metric" style="flex:1;min-width:120px;padding:14px">
+        <div class="card-label">Ticket médio</div>
+        <div class="card-value amber" style="font-size:20px">${R(totalGasto/totalVisits)}</div>
+      </div>
+    </div>
+
+    <div style="margin-bottom:16px">
+      <div style="font-weight:700;margin-bottom:10px">⭐ Itens mais pedidos</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px">
+        ${topItems.map(([name,qty],i)=>`
+          <div style="background:${i===0?'var(--blue-x)':'var(--bg)'};border:1px solid var(--border);border-radius:8px;padding:6px 14px;font-size:13px">
+            ${i===0?'🏆 ':''}${name} <strong style="color:var(--blue-l)">${qty}x</strong>
+          </div>`).join('')}
+      </div>
+    </div>
+
+    <div>
+      <div style="font-weight:700;margin-bottom:10px">📋 Histórico de compras</div>
+      <div style="max-height:260px;overflow-y:auto">
+        <table style="min-width:unset">
+          <thead><tr><th>Data</th><th>Itens</th><th>Pagamento</th><th>Total</th></tr></thead>
+          <tbody>
+            ${[...clientSales].reverse().map(s=>`<tr>
+              <td style="white-space:nowrap">${fmt(s.saleDate||s.date)}</td>
+              <td style="font-size:12px">${s.items.map(i=>`${i.qty}× ${i.name}`).join(', ')}</td>
+              <td style="font-size:12px">${payIcon(s.payMethod)} ${payLabel(s.payMethod)}</td>
+              <td style="font-weight:700;color:var(--green-l);white-space:nowrap">${R(s.netTotal)}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="form-actions" style="margin-top:16px">
+      <button class="btn btn-ghost" onclick="_closeModal()">Fechar</button>
+      <button class="btn btn-primary btn-sm" onclick="_closeModal();navigate('sales')">+ Nova Venda</button>
+    </div>`, true);
+}
+
 function reportMEI(){
   const pct=(state.yearRevenue/MEI_LIMIT*100);
   const months=new Date().getMonth()+1; // meses decorridos no ano atual
