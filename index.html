@@ -17,12 +17,6 @@
   --bg:#F0F4F8;--card:#FFFFFF;--text:#2C3E50;--muted:#6C7A89;
   --border:#DDE3EA;--shadow:0 2px 12px rgba(0,0,0,.08);--radius:10px;
 }
-[data-theme="dark"]{
-  --bg:#0F1117;--card:#1A1D27;--text:#E2E8F0;--muted:#8896A5;
-  --border:#2D3348;--shadow:0 2px 12px rgba(0,0,0,.4);
-  --blue-x:#1A2840;--green-x:#0D2818;--red-x:#2A1015;--amber-x:#2A2008;--purple-x:#1E1230;
-  --blue-l:#4DA3E0;--green-l:#3DC470;--red-l:#F1685E;--amber:#E8A020;
-}
 body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.6}
 a{color:var(--blue-l);text-decoration:none}
 
@@ -34,6 +28,8 @@ a{color:var(--blue-l);text-decoration:none}
 .logo-icon{font-size:22px;flex-shrink:0}
 .logo-text,.nav-label{transition:opacity .2s}
 .sidebar.collapsed .logo-text,.sidebar.collapsed .nav-label{opacity:0;width:0}
+.store-name-bar{text-align:center;padding:6px 16px 14px;border-bottom:1px solid rgba(255,255,255,.1);font-size:13px;font-weight:600;color:rgba(255,255,255,.8);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:.3px}
+.sidebar.collapsed .store-name-bar{opacity:0;height:0;padding:0;overflow:hidden}
 .nav{flex:1;padding:12px 0}
 .nav-item{display:flex;align-items:center;gap:12px;padding:11px 18px;cursor:pointer;font-size:14px;white-space:nowrap;overflow:hidden;border-left:3px solid transparent;transition:background .15s,border-color .15s}
 .nav-item:hover{background:rgba(255,255,255,.1)}
@@ -79,6 +75,7 @@ th{background:var(--bg);padding:11px 16px;text-align:left;font-size:12px;color:v
 td{padding:12px 16px;border-bottom:1px solid var(--border);font-size:14px}
 tr:last-child td{border-bottom:none}
 tr:hover td{background:#F7FAFC}
+[data-theme="dark"] tr:hover td{background:rgba(255,255,255,.04)}
 .badge{display:inline-flex;align-items:center;padding:2px 10px;border-radius:99px;font-size:12px;font-weight:600}
 .badge-green{background:var(--green-x);color:var(--green)}
 .badge-red{background:var(--red-x);color:var(--red)}
@@ -186,25 +183,6 @@ input:focus,select:focus,textarea:focus{border-color:var(--blue-l)}
   .cards-grid{grid-template-columns:1fr}
   .pay-pill{font-size:12px;padding:6px 10px}
 }
-/* ── Dark mode extras ── */
-[data-theme="dark"] .sidebar{background:#111827}
-[data-theme="dark"] .nav-item:hover,[data-theme="dark"] .nav-item.active{background:rgba(255,255,255,.08)}
-[data-theme="dark"] input,[data-theme="dark"] select,[data-theme="dark"] textarea{background:var(--bg);color:var(--text);border-color:var(--border)}
-[data-theme="dark"] input:disabled,[data-theme="dark"] select:disabled{background:#0a0d15;color:var(--muted)}
-[data-theme="dark"] .topbar{background:var(--card)}
-[data-theme="dark"] .pay-pill{background:var(--card);border-color:var(--border);color:var(--muted)}
-[data-theme="dark"] .auth-card{background:var(--card)}
-[data-theme="dark"] .auth-page{background:linear-gradient(135deg,#0d1b2a 0%,#1a2a4a 100%)}
-/* Toggle switch */
-.theme-toggle-wrap{display:flex;align-items:center;justify-content:space-between;padding:14px 0}
-.theme-toggle{position:relative;display:inline-block;width:48px;height:26px;flex-shrink:0}
-.theme-toggle input{opacity:0;width:0;height:0}
-.theme-slider{position:absolute;cursor:pointer;inset:0;background:#ccc;border-radius:99px;transition:.3s}
-.theme-slider:before{content:'';position:absolute;height:20px;width:20px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:.3s}
-.theme-toggle input:checked+.theme-slider{background:var(--blue-l)}
-.theme-toggle input:checked+.theme-slider:before{transform:translateX(22px)}
-.theme-slider-label{font-size:14px;font-weight:600;color:var(--text)}
-.theme-slider-sub{font-size:12px;color:var(--muted);margin-top:2px}
 </style>
 </head>
 <body>
@@ -241,6 +219,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--blue-l)}
 <div id="app" class="app" style="display:none">
   <nav class="sidebar" id="sidebar">
     <div class="logo"><span class="logo-icon">🏪</span><span class="logo-text">MEI Fácil</span></div>
+    <div class="store-name-bar" id="store-name-bar" style="display:none"></div>
     <div class="nav">
       <div class="nav-item active" onclick="navigate('dashboard')"><span class="nav-icon">📊</span><span class="nav-label">Dashboard</span></div>
       <div class="nav-item" onclick="navigate('clients')"><span class="nav-icon">👥</span><span class="nav-label">Clientes</span></div>
@@ -260,11 +239,6 @@ input:focus,select:focus,textarea:focus{border-color:var(--blue-l)}
       </div>
       <div class="topbar-right">
         <span id="topbar-date" style="font-size:13px;color:var(--muted)" class="hide-mobile"></span>
-        <button id="theme-icon" onclick="toggleDarkMode(document.documentElement.getAttribute('data-theme')!=='dark')"
-          title="Alternar modo escuro/claro"
-          style="background:none;border:1.5px solid var(--border);border-radius:8px;padding:5px 10px;cursor:pointer;font-size:16px;color:var(--text);line-height:1;transition:all .15s">
-          ☀️
-        </button>
         <div class="user-badge" id="user-badge" onclick="navigate('settings')">J</div>
       </div>
     </header>
@@ -458,6 +432,7 @@ async function loginSuccess(user){
   document.getElementById('app').style.display = 'flex';
   document.getElementById('user-badge').textContent = (user.name||'U')[0].toUpperCase();
   updateTopbarDate();
+  applyStoreName(user.store_name);
   await loadAllData();
   navigate('dashboard');
   toast(`Bem-vindo(a), ${(user.name||'').split(' ')[0]}! 👋`,'success');
@@ -1720,11 +1695,15 @@ function reportMEI(){
 // SETTINGS
 // ══════════════════════════════════════
 function renderSettings(el){
-  const isDark=document.documentElement.getAttribute('data-theme')==='dark';
   el.innerHTML=`
     <div style="max-width:620px">
       <div class="card" style="margin-bottom:16px">
         <div class="section-title" style="margin-bottom:16px">👤 Minha Conta</div>
+        <div class="form-group">
+          <label>🏪 Nome da Loja / Estabelecimento</label>
+          <input value="${state.user?.store_name||''}" id="set-store" placeholder="Ex: Nike, Padaria do João, Salão da Ana..."/>
+          <span style="font-size:12px;color:var(--muted);margin-top:4px;display:block">Aparece no topo do sistema. Deixe vazio para exibir só "MEI Fácil".</span>
+        </div>
         <div class="form-group"><label>Nome completo</label><input value="${state.user?.name||''}" id="set-name"/></div>
         <div class="form-group"><label>E-mail</label><input type="email" value="${state.user?.email||''}" id="set-email" disabled style="background:var(--bg);color:var(--muted)"/></div>
         <div class="form-row">
@@ -1733,22 +1712,6 @@ function renderSettings(el){
         </div>
         <button class="btn btn-primary" onclick="saveProfile()">💾 Salvar</button>
       </div>
-
-      <div class="card" style="margin-bottom:16px">
-        <div class="section-title" style="margin-bottom:4px">🎨 Aparência</div>
-        <p style="font-size:13px;color:var(--muted);margin-bottom:16px">Escolha o visual do sistema. A preferência é salva automaticamente.</p>
-        <div class="theme-toggle-wrap">
-          <div>
-            <div class="theme-slider-label">${isDark?'🌙 Modo Escuro':'☀️ Modo Claro'}</div>
-            <div class="theme-slider-sub">${isDark?'Ativo — clique para voltar ao claro':'Ativo — clique para ativar o escuro'}</div>
-          </div>
-          <label class="theme-toggle">
-            <input type="checkbox" id="dark-toggle" ${isDark?'checked':''} onchange="toggleDarkMode(this.checked)"/>
-            <span class="theme-slider"></span>
-          </label>
-        </div>
-      </div>
-
       <div class="card" style="margin-bottom:16px">
         <div class="section-title" style="margin-bottom:4px">🏧 Taxas da Maquininha / Gateway</div>
         <p style="font-size:13px;color:var(--muted);margin-bottom:16px">Configure as taxas cobradas pela sua maquininha. Serão pré-preenchidas nas vendas automaticamente.</p>
@@ -1785,17 +1748,29 @@ function saveFeesConfig(){
 }
 function saveProfile(){
   const name=document.getElementById('set-name').value.trim();
+  const store_name=document.getElementById('set-store').value.trim();
   const cpf_cnpj=document.getElementById('set-cnpj').value.trim();
   const razao_social=document.getElementById('set-razao').value.trim();
   if(!name)return toast('Nome é obrigatório','error');
-  saveProfileAsync({name,cpf_cnpj,razao_social});
+  saveProfileAsync({name,store_name,cpf_cnpj,razao_social});
 }
 async function saveProfileAsync(payload){
   const data = await apiCall('/api/auth/profile','PUT',payload);
   if(!data)return;
   state.user={...state.user,...data.user};
   document.getElementById('user-badge').textContent=(data.user.name||'U')[0].toUpperCase();
+  applyStoreName(data.user.store_name);
   toast('Dados da conta salvos! ✅','success');
+}
+function applyStoreName(name){
+  const bar=document.getElementById('store-name-bar');
+  if(!bar)return;
+  if(name&&name.trim()){
+    bar.textContent='🏪 '+name.trim();
+    bar.style.display='block';
+  }else{
+    bar.style.display='none';
+  }
 }
 function changePassword(){
   const current=document.getElementById('pw-current').value;
@@ -1818,30 +1793,6 @@ async function changePasswordAsync(current_password,new_password){
   document.getElementById('pw-confirm').value='';
   toast('Senha alterada com sucesso!','success');
 }
-
-// ══════════════════════════════════════
-// DARK MODE
-// ══════════════════════════════════════
-function applyTheme(dark){
-  document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
-  // Atualiza ícone da topbar se existir
-  const icon = document.getElementById('theme-icon');
-  if(icon) icon.textContent = dark ? '🌙' : '☀️';
-}
-function toggleDarkMode(dark){
-  localStorage.setItem('mei_theme', dark ? 'dark' : 'light');
-  applyTheme(dark);
-  // Re-renderiza o label do card de aparência sem recarregar a página
-  const lbl = document.querySelector('.theme-slider-label');
-  const sub = document.querySelector('.theme-slider-sub');
-  if(lbl) lbl.textContent = dark ? '🌙 Modo Escuro' : '☀️ Modo Claro';
-  if(sub) sub.textContent = dark
-    ? 'Ativo — clique para voltar ao claro'
-    : 'Ativo — clique para ativar o escuro';
-  toast(dark ? '🌙 Modo escuro ativado' : '☀️ Modo claro ativado', 'success');
-}
-// Aplica tema salvo imediatamente ao carregar (antes do login)
-applyTheme(localStorage.getItem('mei_theme') === 'dark');
 
 // ══════════════════════════════════════
 // INIT
