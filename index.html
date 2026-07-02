@@ -295,7 +295,7 @@ async function loadSales(){
 async function loadCashflow(){
   const data = await apiCall('/api/cashflow');
   state.cashflow = (data || []).map(c => ({
-    id: c.id, date: c.entry_date, desc: c.description, type: c.type,
+    id: c.id, date: String(c.entry_date||'').substring(0,10), desc: c.description, type: c.type,
     value: +c.value, saleId: c.sale_id, history: c.edit_history || [],
   }));
 }
@@ -317,7 +317,7 @@ async function loadRevenueHistory(){
 }
 function mapSaleFromApi(s){
   return {
-    id: s.id, date: s.sale_date, clientId: s.client_id, clientName: s.client_name || 'Cliente avulso',
+    id: s.id, date: String(s.sale_date||'').substring(0,10), clientId: s.client_id, clientName: s.client_name || 'Cliente avulso',
     items: (s.items || []).map(i => ({
       productId: i.product_id, name: i.product_name, qty: +i.qty,
       unitPrice: +i.unit_price, cost: +i.cost, subtotal: +i.subtotal,
@@ -474,7 +474,13 @@ window.addEventListener('resize',()=>{document.getElementById('menu-btn').style.
 // HELPERS
 // ══════════════════════════════════════
 const R=v=>'R$ '+(+v).toFixed(2).replace('.',',').replace(/\B(?=(\d{3})+(?!\d))/g,'.');
-function fmt(d){return new Date(d+'T00:00:00').toLocaleDateString('pt-BR');}
+function fmt(d){
+  if(!d)return '—';
+  const s=String(d).substring(0,10);
+  const [y,m,day]=s.split('-');
+  if(!y||!m||!day||y.length!==4)return '—';
+  return `${day}/${m}/${y}`;
+}
 function nowISO(){return new Date().toISOString();}
 function updateTopbarDate(){
   const d=new Date();
@@ -586,7 +592,7 @@ function renderDashboard(el){
       <table>
         <thead><tr><th>Data</th><th>Cliente</th><th>Itens</th><th>Pagamento</th><th>Total líquido</th><th>Status</th></tr></thead>
         <tbody>
-          ${[...state.sales].reverse().slice(0,5).map(s=>`
+          ${[...state.sales].sort((a,b)=>String(b.date).localeCompare(String(a.date))).slice(0,5).map(s=>`
             <tr>
               <td>${fmt(s.date)}</td>
               <td>${s.clientName||'—'}</td>
@@ -940,7 +946,7 @@ function renderSales(el){
       <table>
         <thead><tr><th>Data</th><th>Cliente</th><th>Itens</th><th>Pagamento</th><th>Taxa</th><th>Total líq.</th><th>Lucro</th><th>Status</th><th>Ações</th></tr></thead>
         <tbody>
-          ${[...state.sales].reverse().map(s=>`<tr>
+          ${[...state.sales].sort((a,b)=>String(b.date).localeCompare(String(a.date))).map(s=>`<tr>
             <td>${fmt(s.date)}</td>
             <td>${s.clientName||'<span style="color:var(--muted)">Avulso</span>'}</td>
             <td style="font-size:12px;color:var(--muted);max-width:160px">${s.items.map(i=>`${i.qty}× ${i.name}`).join('<br>')}</td>
@@ -1304,7 +1310,7 @@ function renderCashflow(el){
       <table>
         <thead><tr><th>Data</th><th>Descrição</th><th>Tipo</th><th>Valor</th><th>Histórico</th><th>Ações</th></tr></thead>
         <tbody>
-          ${[...state.cashflow].reverse().map(c=>`<tr>
+          ${[...state.cashflow].sort((a,b)=>String(b.date).localeCompare(String(a.date))).map(c=>`<tr>
             <td>${fmt(c.date)}</td>
             <td>${c.desc}${c.saleId?` <span style="font-size:11px;color:var(--muted)">#venda</span>`:''}</td>
             <td><span class="badge ${c.type==='in'?'badge-green':'badge-red'}">${c.type==='in'?'▲ Entrada':'▼ Saída'}</span></td>
