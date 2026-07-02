@@ -41,6 +41,7 @@ const initDB = async () => {
         password_hash VARCHAR(255) NOT NULL,
         cpf_cnpj VARCHAR(50),
         razao_social VARCHAR(255),
+        store_name VARCHAR(150),
         updated_at TIMESTAMP DEFAULT NOW(),
         created_at TIMESTAMP DEFAULT NOW()
       );
@@ -124,6 +125,8 @@ const initDB = async () => {
         created_at TIMESTAMP DEFAULT NOW()
       );
     `);
+    // Migrações seguras para bancos já existentes
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS store_name VARCHAR(150);`);
     console.log("✅ Banco de dados inicializado e pronto para uso!");
   } catch (err) {
     console.error("❌ Erro ao criar as tabelas:", err);
@@ -204,7 +207,7 @@ app.post('/api/auth/login', async (req, res) => {
 
 app.get('/api/auth/me', auth, async (req, res) => {
   try {
-    const { rows } = await Q('SELECT id, name, email, cpf_cnpj, razao_social FROM users WHERE id=$1', [req.userId]);
+    const { rows } = await Q('SELECT id, name, email, cpf_cnpj, razao_social, store_name FROM users WHERE id=$1', [req.userId]);
     if (!rows.length) return res.status(404).json({ error: 'Usuário não encontrado' });
     res.json({ user: rows[0] });
   } catch (e) { res.status(500).json({ error: 'Erro ao buscar usuário' }); }
@@ -230,11 +233,11 @@ app.patch('/api/auth/password', auth, async (req, res) => {
 
 app.put('/api/auth/profile', auth, async (req, res) => {
   try {
-    const { name, cpf_cnpj, razao_social } = req.body;
+    const { name, cpf_cnpj, razao_social, store_name } = req.body;
     if (!name || !name.trim()) return res.status(400).json({ error: 'Nome é obrigatório' });
     const { rows } = await Q(
-      `UPDATE users SET name=$1, cpf_cnpj=$2, razao_social=$3, updated_at=NOW() WHERE id=$4 RETURNING id, name, email, cpf_cnpj, razao_social`,
-      [name.trim(), cpf_cnpj || null, razao_social || null, req.userId]
+      `UPDATE users SET name=$1, cpf_cnpj=$2, razao_social=$3, store_name=$4, updated_at=NOW() WHERE id=$5 RETURNING id, name, email, cpf_cnpj, razao_social, store_name`,
+      [name.trim(), cpf_cnpj || null, razao_social || null, store_name || null, req.userId]
     );
     res.json({ user: rows[0] });
   } catch (e) { res.status(500).json({ error: 'Erro ao atualizar perfil' }); }
