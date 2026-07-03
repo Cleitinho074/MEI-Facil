@@ -1788,7 +1788,19 @@ function reportPDF(){
           </label>`).join('')}
       </div>
 
-      <div class="form-row">
+      <div class="form-group">
+        <label style="margin-bottom:10px">Período do relatório</label>
+        <div class="pay-methods" id="period-quick-pills">
+          <div class="pay-pill" id="pill-period-day" onclick="setReportPeriod('day')">📅 1 dia</div>
+          <div class="pay-pill" id="pill-period-week" onclick="setReportPeriod('week')">🗓️ 1 semana</div>
+          <div class="pay-pill active" id="pill-period-month" onclick="setReportPeriod('month')">📆 1 mês</div>
+          <div class="pay-pill" id="pill-period-year" onclick="setReportPeriod('year')">🏛️ 1 ano</div>
+          <div class="pay-pill" id="pill-period-total" onclick="setReportPeriod('total')">♾️ Total</div>
+          <div class="pay-pill" id="pill-period-single" onclick="setReportPeriod('single')">🗓️ Dia avulso</div>
+        </div>
+      </div>
+
+      <div class="form-row" id="period-range-fields">
         <div class="form-group">
           <label>Período — De</label>
           <input type="date" id="pdf-from" value="${ano}-${mesNum}-01"/>
@@ -1797,6 +1809,10 @@ function reportPDF(){
           <label>Período — Até</label>
           <input type="date" id="pdf-to" value="${new Date(ano,now.getMonth()+1,0).toISOString().slice(0,10)}"/>
         </div>
+      </div>
+      <div class="form-group" id="period-single-field" style="display:none">
+        <label>Escolha o dia</label>
+        <input type="date" id="pdf-single-day" value="${now.toISOString().slice(0,10)}"/>
       </div>
 
       <div class="form-group">
@@ -1823,10 +1839,52 @@ function reportPDF(){
     </div>`;
 }
 
+// Preenche De/Até (ou o campo de dia avulso) a partir dos atalhos de período
+function setReportPeriod(mode){
+  document.querySelectorAll('#period-quick-pills .pay-pill').forEach(p=>p.classList.remove('active'));
+  document.getElementById('pill-period-'+mode)?.classList.add('active');
+
+  const rangeFields  = document.getElementById('period-range-fields');
+  const singleField  = document.getElementById('period-single-field');
+  if(mode==='single'){
+    rangeFields.style.display='none';
+    singleField.style.display='block';
+    return;
+  }
+  rangeFields.style.display='';
+  singleField.style.display='none';
+
+  const iso = d => d.toISOString().slice(0,10);
+  const now = new Date();
+  let from=now, to=now, useEmpty=false;
+  if(mode==='day'){
+    from = now; to = now;
+  } else if(mode==='week'){
+    from = new Date(now); from.setDate(from.getDate()-6); to = now;
+  } else if(mode==='month'){
+    from = new Date(now.getFullYear(), now.getMonth(), 1);
+    to   = new Date(now.getFullYear(), now.getMonth()+1, 0);
+  } else if(mode==='year'){
+    from = new Date(now.getFullYear(), 0, 1);
+    to   = new Date(now.getFullYear(), 11, 31);
+  } else if(mode==='total'){
+    useEmpty = true;
+  }
+  document.getElementById('pdf-from').value = useEmpty ? '' : iso(from);
+  document.getElementById('pdf-to').value   = useEmpty ? '' : iso(to);
+}
+
 function gerarPDF(){
   const tipo = document.querySelector('input[name="report-type"]:checked')?.value || 'mensal';
-  const from = document.getElementById('pdf-from')?.value;
-  const to   = document.getElementById('pdf-to')?.value;
+  const singleMode = document.getElementById('period-single-field')?.style.display !== 'none';
+  let from, to;
+  if(singleMode){
+    const dia = document.getElementById('pdf-single-day')?.value;
+    from = dia; to = dia;
+  } else {
+    from = document.getElementById('pdf-from')?.value;
+    to   = document.getElementById('pdf-to')?.value;
+  }
   const autor= document.getElementById('pdf-autor')?.value || state.user?.name || '—';
   const cnpj = document.getElementById('pdf-cnpj')?.value || state.user?.cpf_cnpj || '—';
   const obs  = document.getElementById('pdf-obs')?.value || '';
@@ -1834,11 +1892,14 @@ function gerarPDF(){
   const dataFrom = from ? new Date(from+'T00:00:00') : null;
   const dataTo   = to   ? new Date(to+'T23:59:59')   : null;
   const fmtPeriodo = (from && to)
-    ? `${new Date(from+'T00:00:00').toLocaleDateString('pt-BR')} a ${new Date(to+'T00:00:00').toLocaleDateString('pt-BR')}`
+    ? (from===to
+        ? new Date(from+'T00:00:00').toLocaleDateString('pt-BR')
+        : `${new Date(from+'T00:00:00').toLocaleDateString('pt-BR')} a ${new Date(to+'T00:00:00').toLocaleDateString('pt-BR')}`)
     : 'Período completo';
 
   const now = new Date();
   const dataEmissao = now.toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'});
+  const mesAtualNome = now.toLocaleDateString('pt-BR',{month:'long',year:'numeric'});
 
   // Filtra vendas pelo período
   const vendasPeriodo = state.sales.filter(s=>{
@@ -2017,7 +2078,7 @@ function gerarPDF(){
       ${obs?`<h2 class="abnt-section">OBSERVAÇÕES</h2><p>${obs}</p>`:''}
     </div>
     <div class="abnt-section">
-      <h2>PAINEL GERAL — SITUAÇÃO ATUAL (${mes.toUpperCase()})</h2>
+      <h2>PAINEL GERAL — SITUAÇÃO ATUAL (${mesAtualNome.toUpperCase()})</h2>
       <p>Indicadores extraídos diretamente da Dashboard do sistema, referentes ao mês corrente.</p>
       <table>
         <tr><th>Indicador</th><th>Valor</th></tr>
