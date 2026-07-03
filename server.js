@@ -86,6 +86,7 @@ const initDB = async () => {
         net_total DECIMAL(10,2) DEFAULT 0,
         notes TEXT,
         sale_date DATE,
+        sale_time VARCHAR(5),
         paid_at TIMESTAMP,
         created_at TIMESTAMP DEFAULT NOW()
       );
@@ -127,6 +128,7 @@ const initDB = async () => {
     `);
     // Migrações seguras para bancos já existentes
     await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS store_name VARCHAR(150);`);
+    await client.query(`ALTER TABLE sales ADD COLUMN IF NOT EXISTS sale_time VARCHAR(5);`);
     console.log("✅ Banco de dados inicializado e pronto para uso!");
   } catch (err) {
     console.error("❌ Erro ao criar as tabelas:", err);
@@ -309,18 +311,19 @@ app.get('/api/sales/:id', auth, async (req, res) => {
   res.json({ ...rows[0], items });
 });
 app.post('/api/sales', auth, async (req, res) => {
-  const { client_id, client_name, items, pay_method = 'dinheiro', fee_pct = 0, status = 'pending', notes, sale_date } = req.body;
+  const { client_id, client_name, items, pay_method = 'dinheiro', fee_pct = 0, status = 'pending', notes, sale_date, sale_time } = req.body;
   const total = items.reduce((a, i) => a + i.qty * i.unit_price, 0);
   const profit = items.reduce((a, i) => a + (i.qty * i.unit_price - i.qty * (i.cost || 0)), 0);
   const feeValue = +(total * (fee_pct || 0) / 100).toFixed(2);
   const netTotal = +(total - feeValue).toFixed(2);
   const date = sale_date || new Date().toISOString().slice(0, 10);
+  const time = (typeof sale_time === 'string' && /^\d{2}:\d{2}$/.test(sale_time)) ? sale_time : new Date().toTimeString().slice(0, 5);
   const client = await db.connect();
   try {
     await client.query('BEGIN');
     const { rows: saleRows } = await client.query(
-      `INSERT INTO sales(user_id,client_id,client_name,total,profit,status,pay_method,fee_pct,fee_value,net_total,notes,sale_date,paid_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
-      [req.userId, client_id || null, client_name || null, total, profit, status, pay_method, fee_pct, feeValue, netTotal, notes || null, date, status === 'paid' ? new Date() : null]
+      `INSERT INTO sales(user_id,client_id,client_name,total,profit,status,pay_method,fee_pct,fee_value,net_total,notes,sale_date,sale_time,paid_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
+      [req.userId, client_id || null, client_name || null, total, profit, status, pay_method, fee_pct, feeValue, netTotal, notes || null, date, time, status === 'paid' ? new Date() : null]
     );
     const sale = saleRows[0];
     for (const it of items) {
