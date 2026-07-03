@@ -283,6 +283,7 @@ input[type="checkbox"]{border-radius:4px}
       <div class="nav-item" onclick="navigate('cashflow')"><span class="nav-icon">💰</span><span class="nav-label">Fluxo de Caixa</span></div>
       <div class="nav-item" onclick="navigate('reports')"><span class="nav-icon">📈</span><span class="nav-label">Relatórios</span></div>
       <div class="nav-item" onclick="navigate('settings')"><span class="nav-icon">⚙️</span><span class="nav-label">Configurações</span></div>
+      <div class="nav-item" id="nav-adminseed" style="display:none" onclick="navigate('adminseed')"><span class="nav-icon">🛠️</span><span class="nav-label">Admin (dados demo)</span></div>
     </div>
     <div class="collapse-btn" onclick="toggleSidebar()">‹</div>
   </nav>
@@ -499,6 +500,9 @@ async function loginSuccess(user){
   document.getElementById('app').style.display = 'flex';
   document.getElementById('user-badge').textContent = (user.name||'U')[0].toUpperCase();
   updateTopbarDate();
+  const isDemo = (user.email||'').toLowerCase() === 'demo@meifacil.com.br';
+  const adminNav = document.getElementById('nav-adminseed');
+  if(adminNav) adminNav.style.display = isDemo ? 'flex' : 'none';
   await loadAllData();
   navigate('dashboard');
   toast(`Bem-vindo(a), ${(user.name||'').split(' ')[0]}! 👋`,'success');
@@ -525,12 +529,12 @@ function logout(){
 // ══════════════════════════════════════
 // NAV
 // ══════════════════════════════════════
-const pageNames={dashboard:'Dashboard',clients:'Clientes',products:'Produtos & Serviços',sales:'Vendas',cashflow:'Fluxo de Caixa',reports:'Relatórios',settings:'Configurações'};
+const pageNames={dashboard:'Dashboard',clients:'Clientes',products:'Produtos & Serviços',sales:'Vendas',cashflow:'Fluxo de Caixa',reports:'Relatórios',settings:'Configurações',adminseed:'Admin (dados demo)'};
 async function navigate(page){
   state.page=page;
   document.getElementById('page-title').textContent=pageNames[page];
   document.querySelectorAll('.nav-item').forEach(el=>el.classList.remove('active'));
-  const idx=['dashboard','clients','products','sales','cashflow','reports','settings'].indexOf(page);
+  const idx=['dashboard','clients','products','sales','cashflow','reports','settings','adminseed'].indexOf(page);
   if(idx>=0)document.querySelectorAll('.nav-item')[idx].classList.add('active');
   document.getElementById('sidebar').classList.remove('mobile-open');
   await renderPage(page);
@@ -588,7 +592,7 @@ async function renderPage(page){
   if(page==='dashboard') await Promise.all([loadDashboardStats(), loadSales(), loadCashflow()]);
   if(page==='reports')   await Promise.all([loadSales(), loadProducts(), loadCashflow(), loadDashboardStats(), loadRevenueHistory()]);
   ({dashboard:renderDashboard,clients:renderClients,products:renderProducts,
-    sales:renderSales,cashflow:renderCashflow,reports:renderReports,settings:renderSettings}
+    sales:renderSales,cashflow:renderCashflow,reports:renderReports,settings:renderSettings,adminseed:renderAdminSeed}
   [page]||renderDashboard)(el);
 }
 
@@ -2270,6 +2274,52 @@ async function changePasswordAsync(current_password,new_password){
   document.getElementById('pw-new').value='';
   document.getElementById('pw-confirm').value='';
   toast('Senha alterada com sucesso!','success');
+}
+
+// ══════════════════════════════════════
+// ADMIN — DADOS DE DEMONSTRAÇÃO (só aparece/funciona para a conta demo)
+// ══════════════════════════════════════
+function renderAdminSeed(el){
+  const isDemo = (state.user?.email||'').toLowerCase() === 'demo@meifacil.com.br';
+  if(!isDemo){
+    el.innerHTML = `<div class="card" style="padding:40px;text-align:center;color:var(--muted)">🔒 Esta área é exclusiva da conta demo.</div>`;
+    return;
+  }
+  el.innerHTML = `
+    <div class="card" style="max-width:560px;padding:24px">
+      <h3 style="margin-bottom:6px">🛠️ Dados de demonstração</h3>
+      <p style="font-size:13px;color:var(--muted);margin-bottom:20px">Gera clientes, vendas e lançamentos de caixa fictícios (nomes, CPFs e telefones inventados) só nesta conta demo, para deixar a apresentação com dados de exemplo realistas. Lembre-se de avisar que são dados de demonstração.</p>
+
+      <div class="form-row-3">
+        <div class="form-group"><label>Clientes</label><input type="number" id="seed-clients" value="12" min="1" max="30"/></div>
+        <div class="form-group"><label>Dias de histórico</label><input type="number" id="seed-days" value="45" min="1" max="180"/></div>
+        <div class="form-group"><label>Vendas / dia (~)</label><input type="number" id="seed-per-day" value="3" min="1" max="10"/></div>
+      </div>
+
+      <button class="btn btn-primary" style="width:100%;padding:12px;margin-top:8px" onclick="adminSeedGenerate()">🌱 Gerar dados de demonstração</button>
+      <button class="btn btn-ghost" style="width:100%;padding:12px;margin-top:10px;border:1.5px solid var(--red-l);color:var(--red-l)" onclick="adminSeedReset()">🧹 Limpar todos os dados desta conta</button>
+
+      <div id="seed-result" style="margin-top:16px;font-size:13px;color:var(--muted)"></div>
+    </div>`;
+}
+async function adminSeedGenerate(){
+  const clients   = document.getElementById('seed-clients').value;
+  const days      = document.getElementById('seed-days').value;
+  const salesPerDay = document.getElementById('seed-per-day').value;
+  const box = document.getElementById('seed-result');
+  box.textContent = '⏳ Gerando dados, isso pode levar alguns segundos...';
+  const data = await apiCall('/api/admin/seed-demo','POST',{clients:+clients,days:+days,salesPerDay:+salesPerDay});
+  if(!data){ box.textContent=''; return; }
+  box.innerHTML = `✅ ${data.clients_created} clientes e ${data.sales_created} vendas criados.`;
+  toast('Dados de demonstração gerados!','success');
+}
+async function adminSeedReset(){
+  if(!confirm('Isso vai apagar TODOS os clientes, vendas e lançamentos desta conta demo. Confirmar?'))return;
+  const box = document.getElementById('seed-result');
+  const data = await apiCall('/api/admin/reset-demo','POST',{});
+  if(!data)return;
+  box.textContent = '✅ Dados da conta demo limpos.';
+  toast('Conta demo resetada!','success');
 }
 
 // ══════════════════════════════════════
