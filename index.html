@@ -129,6 +129,9 @@ tr:hover td{background:#F7FAFC}
 label{display:block;font-size:13px;font-weight:600;color:var(--muted);margin-bottom:5px}
 input,select,textarea{width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:14px;font-family:inherit;transition:border-color .15s;outline:none}
 input:focus,select:focus,textarea:focus{border-color:var(--blue-l)}
+/* Radio/checkbox não devem herdar width:100%/padding/border do input genérico — isso fazia os cards de seleção "estourarem" e o texto sair da caixa */
+input[type="radio"],input[type="checkbox"]{width:16px;height:16px;min-width:16px;padding:0;margin:0;border-radius:50%;flex-shrink:0;accent-color:var(--blue-l)}
+input[type="checkbox"]{border-radius:4px}
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .form-row-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
 .form-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:20px;flex-wrap:wrap}
@@ -211,7 +214,8 @@ input:focus,select:focus,textarea:focus{border-color:var(--blue-l)}
 }
 /* ── Impressão ABNT ── */
 @media print{
-  body,.sidebar,.topbar,.tabs,#report-tabs,.btn,.btn-primary,.btn-ghost,.section-header button{display:none!important}
+  /* Oculta apenas o app e o modal — NUNCA o body, senão o #abnt-print (filho do body) some junto mesmo com display:block!important */
+  #auth-page,#app,.modal-overlay,.toast{display:none!important}
   #abnt-print{display:block!important}
   @page{size:A4;margin:3cm 2.5cm 2cm 3cm}
   #abnt-print{font-family:'Times New Roman',Times,serif;font-size:12pt;line-height:1.5;color:#000;background:#fff}
@@ -1860,6 +1864,17 @@ function gerarPDF(){
   const pctMEI = (state.yearRevenue/MEI_LIMIT*100).toFixed(1);
   const meses  = new Date().getMonth()+1;
 
+  // ── Dados iguais aos exibidos na Dashboard (mês atual, independente do período escolhido no filtro) ──
+  const mesAtualKey = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  const paidSalesMes = state.sales.filter(s=>s.status==='paid'&&s.date&&s.date.startsWith(mesAtualKey));
+  const receitaMes   = paidSalesMes.reduce((a,s)=>a+s.netTotal,0);
+  const lucroMes     = paidSalesMes.reduce((a,s)=>a+s.profit,0);
+  const despesasMes  = state.cashflow.filter(c=>c.type==='out'&&c.date&&c.date.startsWith(mesAtualKey)).reduce((a,c)=>a+c.value,0);
+  const taxasMes     = paidSalesMes.reduce((a,s)=>a+s.feeValue,0);
+  const margemMes    = receitaMes>0 ? (lucroMes/receitaMes*100).toFixed(1) : '0.0';
+  const payBreakdownMes = {};
+  paidSalesMes.forEach(s=>{payBreakdownMes[s.payMethod]=(payBreakdownMes[s.payMethod]||0)+s.netTotal;});
+
   const nomes = {
     mensal: 'RELATÓRIO MENSAL DE GESTÃO FINANCEIRA',
     vendas: 'RELATÓRIO DE VENDAS',
@@ -1994,11 +2009,32 @@ function gerarPDF(){
     </div>
     <div class="abnt-section">
       <h2>SUMÁRIO</h2>
+      <p>Painel Geral — Situação Atual</p>
       <p>1. Resumo Financeiro do Período</p>
       <p>2. Detalhamento das Vendas</p>
       <p>3. Fluxo de Caixa</p>
       <p>4. Posição de Estoque</p>
       ${obs?`<h2 class="abnt-section">OBSERVAÇÕES</h2><p>${obs}</p>`:''}
+    </div>
+    <div class="abnt-section">
+      <h2>PAINEL GERAL — SITUAÇÃO ATUAL (${mes.toUpperCase()})</h2>
+      <p>Indicadores extraídos diretamente da Dashboard do sistema, referentes ao mês corrente.</p>
+      <table>
+        <tr><th>Indicador</th><th>Valor</th></tr>
+        <tr><td>Receita líquida (mês)</td><td>${R(receitaMes)}</td></tr>
+        <tr><td>Lucro estimado (mês)</td><td>${R(lucroMes)} (margem de ${margemMes}%)</td></tr>
+        <tr><td>Despesas (mês)</td><td>${R(despesasMes)}</td></tr>
+        <tr><td>Taxas de maquininha/gateway (mês)</td><td>${R(taxasMes)}</td></tr>
+        <tr><td>Vendas pagas no mês</td><td>${paidSalesMes.length}</td></tr>
+        <tr><td>Faturamento acumulado no ano (MEI)</td><td>${R(state.yearRevenue)}</td></tr>
+        <tr><td>Limite anual MEI</td><td>${R(MEI_LIMIT)}</td></tr>
+        <tr><td>Percentual do limite utilizado</td><td>${pctMEI}%</td></tr>
+      </table>
+      <h3>Vendas por forma de pagamento (mês)</h3>
+      <table>
+        <tr><th>Forma de Pagamento</th><th>Valor (R$)</th></tr>
+        ${Object.entries(payBreakdownMes).map(([m,v])=>`<tr><td>${payLabel(m)}</td><td>${R(v)}</td></tr>`).join('')||'<tr><td colspan="2">Sem vendas registradas neste mês</td></tr>'}
+      </table>
     </div>
     ${seccoes}
     <div class="abnt-section">
