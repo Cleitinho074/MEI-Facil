@@ -98,6 +98,7 @@ const initDB = async () => {
         user_id UUID REFERENCES users(id) ON DELETE CASCADE,
         product_id UUID REFERENCES products(id) ON DELETE SET NULL,
         product_name VARCHAR(255),
+        variation_name VARCHAR(255),
         qty INT NOT NULL,
         unit_price DECIMAL(10,2) NOT NULL,
         cost DECIMAL(10,2) DEFAULT 0,
@@ -131,6 +132,7 @@ const initDB = async () => {
     await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS store_name VARCHAR(150);`);
     await client.query(`ALTER TABLE sales ADD COLUMN IF NOT EXISTS sale_time VARCHAR(5);`);
     await client.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS variations JSONB DEFAULT '[]'::jsonb;`);
+    await client.query(`ALTER TABLE sale_items ADD COLUMN IF NOT EXISTS variation_name VARCHAR(255);`);
     console.log("✅ Banco de dados inicializado e pronto para uso!");
   } catch (err) {
     console.error("❌ Erro ao criar as tabelas:", err);
@@ -330,8 +332,8 @@ app.post('/api/sales', auth, async (req, res) => {
     const sale = saleRows[0];
     for (const it of items) {
       await client.query(
-        `INSERT INTO sale_items(sale_id,user_id,product_id,product_name,qty,unit_price,cost,subtotal) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,
-        [sale.id, req.userId, it.product_id || null, it.product_name || null, it.qty, it.unit_price, it.cost || 0, +(it.qty * it.unit_price).toFixed(2)]
+        `INSERT INTO sale_items(sale_id,user_id,product_id,product_name,variation_name,qty,unit_price,cost,subtotal) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+        [sale.id, req.userId, it.product_id || null, it.product_name || null, it.variation_name || null, it.qty, it.unit_price, it.cost || 0, +(it.qty * it.unit_price).toFixed(2)]
       );
       if (it.product_id) {
         const { rows: pRows } = await client.query(`SELECT stock, variations, type FROM products WHERE id=$1 AND user_id=$2`, [it.product_id, req.userId]);
