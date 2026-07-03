@@ -422,6 +422,154 @@ app.get('/api/reports/annual', auth, async (req, res) => {
   res.json(rows);
 });
 
+// ══════════════════════════════════════════════════════════════
+// ADMIN — DADOS DE DEMONSTRAÇÃO (disponível apenas para a conta demo)
+// ══════════════════════════════════════════════════════════════
+const DEMO_EMAIL = (process.env.DEMO_EMAIL || 'demo@meifacil.com.br').toLowerCase();
+
+const demoOnly = async (req, res, next) => {
+  try {
+    const { rows } = await Q('SELECT email FROM users WHERE id=$1', [req.userId]);
+    if (!rows.length || rows[0].email.toLowerCase() !== DEMO_EMAIL) {
+      return res.status(403).json({ error: 'Disponível apenas para a conta demo' });
+    }
+    next();
+  } catch (e) { res.status(500).json({ error: 'Erro ao validar conta' }); }
+};
+
+const MS_CITIES = ['Campo Grande', 'Dourados', 'Três Lagoas', 'Corumbá', 'Ponta Porã', 'Naviraí', 'Aquidauana'];
+const FIRST_NAMES = ['Ana','Bruno','Carla','Diego','Elaine','Fábio','Gabriela','Henrique','Isabela','João','Karina','Lucas','Mariana','Nicolas','Otávio','Patrícia','Rafael','Sandra','Thiago','Vanessa'];
+const LAST_NAMES = ['Silva','Souza','Oliveira','Santos','Pereira','Costa','Rodrigues','Almeida','Nascimento','Lima','Araújo','Ribeiro','Carvalho','Gomes','Martins'];
+const rnd = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
+const pick = (arr) => arr[rnd(0, arr.length - 1)];
+
+function fakeCPF() {
+  const n = Array.from({ length: 9 }, () => rnd(0, 9));
+  const digit = (nums) => { let s = 0, f = nums.length + 1; for (const d of nums) s += d * f--; const r = (s * 10) % 11; return r === 10 ? 0 : r; };
+  const d1 = digit(n), d2 = digit([...n, d1]);
+  const all = [...n, d1, d2];
+  return `${all.slice(0,3).join('')}.${all.slice(3,6).join('')}.${all.slice(6,9).join('')}-${all.slice(9).join('')}`;
+}
+const fakePhoneMS = () => `(67) 9${rnd(6000,9999)}-${String(rnd(0,9999)).padStart(4,'0')}`;
+
+// Popula a conta demo com clientes, vendas e fluxo de caixa fictícios e realistas
+app.post('/api/admin/seed-demo', auth, demoOnly, async (req, res) => {
+  const client = await db.connect();
+  try {
+    const numClients   = Math.min(30, Math.max(1, +req.body.clients || 12));
+    const days          = Math.min(180, Math.max(1, +req.body.days || 45));
+    const salesPerDay   = Math.min(10, Math.max(1, +req.body.salesPerDay || 3));
+
+    await client.query('BEGIN');
+
+    let { rows: products } = await client.query('SELECT * FROM products WHERE user_id=$1 AND active=true', [req.userId]);
+    if (!products.length) {
+      const seedProducts = [
+        ['Coxinha de Frango','product','un',2.5,100,5.0,120],
+        ['Bolo de Chocolate','product','un',15,60,24.0,40],
+        ['Refrigerante Lata','product','un',3,60,4.8,150],
+        ['Suco de Laranja','product','un',2,150,5.0,100],
+        ['Pastel','product','un',3,90,5.7,120],
+        ['Bolo de Fuba','product','un',12,83,22.0,30],
+      ];
+      for (const [name,type,unit,cost,margin_pct,price,stock] of seedProducts) {
+        const { rows } = await client.query('INSERT INTO products(user_id,name,type,unit,cost,margin_pct,price,stock) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *', [req.userId,name,type,unit,cost,margin_pct,price,stock]);
+        products.push(rows[0]);
+      }
+    }
+
+    const newClients = [];
+    for (let i = 0; i < numClients; i++) {
+      const name = `${pick(FIRST_NAMES)} ${pick(LAST_NAMES)}`;
+      const { rows } = await client.query(
+        'INSERT INTO clients(user_id,name,cpf,phone,email,city) VALUES($1,$2,$3,$4,$5,$6) RETURNING *',
+        [req.userId, name, fakeCPF(), fakePhoneMS(), null, `${pick(MS_CITIES)} - MS`]
+      );
+      newClients.push(rows[0]);
+    }
+
+    const payMethods = [
+      { key: 'dinheiro', fee: 0 },
+      { key: 'pix',      fee: 0 },
+      { key: 'debito',   fee: 1.5 },
+      { key: 'credito',  fee: 2.99 },
+    ];
+    const despesas = ['Compra de insumos','Gás de cozinha','Embalagens','Conta de energia','Aluguel do ponto','Manutenção de equipamento'];
+
+    let salesCreated = 0;
+    const today = new Date();
+    for (let d = days - 1; d >= 0; d--) {
+      const day = new Date(today); day.setDate(day.getDate() - d);
+      const dateStr = day.toISOString().slice(0, 10);
+      const qtySales = rnd(Math.max(1, salesPerDay - 2), salesPerDay + 2);
+
+      for (let s = 0; s < qtySales; s++) {
+        const items = [];
+        for (let k = 0; k < rnd(1, 3); k++) {
+          const p = pick(products);
+          items.push({ product_id: p.id, product_name: p.name, qty: rnd(1, 4), unit_price: +p.price, cost: +p.cost });
+        }
+        const total = items.reduce((a, i) => a + i.qty * i.unit_price, 0);
+        const profit = items.reduce((a, i) => a + (i.qty * i.unit_price - i.qty * i.cost), 0);
+        const method = pick(payMethods);
+        const feeValue = +(total * method.fee / 100).toFixed(2);
+        const netTotal = +(total - feeValue).toFixed(2);
+        const status = Math.random() < 0.92 ? 'paid' : 'pending';
+        const clientRow = Math.random() < 0.75 ? pick(newClients) : null;
+        const time = `${String(rnd(8,20)).padStart(2,'0')}:${String(rnd(0,59)).padStart(2,'0')}`;
+
+        const { rows: saleRows } = await client.query(
+          `INSERT INTO sales(user_id,client_id,client_name,total,profit,status,pay_method,fee_pct,fee_value,net_total,sale_date,sale_time,paid_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
+          [req.userId, clientRow ? clientRow.id : null, clientRow ? clientRow.name : 'Cliente avulso', total, profit, status, method.key, method.fee, feeValue, netTotal, dateStr, time, status === 'paid' ? day : null]
+        );
+        const sale = saleRows[0];
+        for (const it of items) {
+          await client.query(
+            `INSERT INTO sale_items(sale_id,user_id,product_id,product_name,qty,unit_price,cost,subtotal) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,
+            [sale.id, req.userId, it.product_id, it.product_name, it.qty, it.unit_price, it.cost, +(it.qty * it.unit_price).toFixed(2)]
+          );
+          await client.query(`UPDATE products SET stock = GREATEST(0, COALESCE(stock,0) - $1) WHERE id=$2 AND user_id=$3 AND type='product' AND stock IS NOT NULL`, [it.qty, it.product_id, req.userId]);
+        }
+        if (status === 'paid') {
+          await client.query(`INSERT INTO cashflow_entries(user_id,description,type,value,entry_date,sale_id) VALUES($1,$2,'in',$3,$4,$5)`,
+            [req.userId, `Venda — ${items.map(i => `${i.qty}x ${i.product_name}`).join(', ')}`, netTotal, dateStr, sale.id]);
+        }
+        salesCreated++;
+      }
+
+      if (d % 4 === 0) {
+        await client.query(`INSERT INTO cashflow_entries(user_id,description,type,value,entry_date) VALUES($1,$2,'out',$3,$4)`,
+          [req.userId, pick(despesas), rnd(40, 300), dateStr]);
+      }
+    }
+
+    await client.query('COMMIT');
+    res.json({ success: true, clients_created: newClients.length, sales_created: salesCreated });
+  } catch (e) {
+    await client.query('ROLLBACK');
+    console.error(e);
+    res.status(500).json({ error: 'Erro ao gerar dados de demonstração' });
+  } finally { client.release(); }
+});
+
+// Remove todos os clientes, vendas e lançamentos de caixa da conta demo
+app.post('/api/admin/reset-demo', auth, demoOnly, async (req, res) => {
+  const client = await db.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('DELETE FROM cashflow_entries WHERE user_id=$1', [req.userId]);
+    await client.query('DELETE FROM sale_items WHERE user_id=$1', [req.userId]);
+    await client.query('DELETE FROM sales WHERE user_id=$1', [req.userId]);
+    await client.query('DELETE FROM clients WHERE user_id=$1', [req.userId]);
+    await client.query('DELETE FROM revenue_audit WHERE user_id=$1', [req.userId]);
+    await client.query('COMMIT');
+    res.json({ success: true });
+  } catch (e) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: 'Erro ao limpar dados demo' });
+  } finally { client.release(); }
+});
+
 // ── Health & Fallback ──────────────────────────────────────────
 app.get('/api/health', (_, res) => res.json({ status:'ok', ts: new Date().toISOString() }));
 app.get('*', (_, res) => res.sendFile(path.join(__dirname, 'index.html')));
