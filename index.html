@@ -996,12 +996,12 @@ async function saveStockAsync(id,mode,value){
 function renderSales(el){
   const paid=state.sales.filter(s=>s.status==='paid');
   const total=paid.reduce((a,s)=>a+s.netTotal,0);
-  const profit=paid.reduce((a,s)=>a+s.profit,0);
+  const profit=paid.reduce((a,s)=>a+(s.profit-s.feeValue),0);
   const fees=paid.reduce((a,s)=>a+s.feeValue,0);
   el.innerHTML=`
     <div class="cards-grid" style="margin-bottom:20px">
       <div class="card card-metric"><div class="card-label">Total líquido (mês)</div><div class="card-value green">${R(total)}</div></div>
-      <div class="card card-metric"><div class="card-label">Lucro estimado</div><div class="card-value blue">${R(profit)}</div></div>
+      <div class="card card-metric"><div class="card-label">Lucro líquido (após taxas)</div><div class="card-value blue">${R(profit)}</div></div>
       <div class="card card-metric"><div class="card-label">Taxas cobradas</div><div class="card-value amber">${R(fees)}</div></div>
       <div class="card card-metric"><div class="card-label">Pendentes</div><div class="card-value amber">${state.sales.filter(s=>s.status==='pending').length}</div></div>
     </div>
@@ -1020,7 +1020,7 @@ function renderSales(el){
             <td>${payIcon(s.payMethod)} ${payLabel(s.payMethod)}</td>
             <td style="color:var(--amber);font-size:12px">${s.feeValue>0?'-'+R(s.feeValue):'—'}</td>
             <td style="font-weight:700">${R(s.netTotal)}</td>
-            <td style="color:var(--green-l);font-weight:600">${s.status==='paid'?R(s.profit):'—'}</td>
+            <td style="font-weight:600;color:${s.status==='paid'&&(s.profit-s.feeValue)<0?'var(--red-l)':'var(--green-l)'}">${s.status==='paid'?R(s.profit-s.feeValue):'—'}</td>
             <td><span class="badge ${s.status==='paid'?'badge-green':'badge-amber'}" style="cursor:pointer" onclick="toggleSaleStatus('${s.id}')">${s.status==='paid'?'✅ Pago':'⏳ Pendente'}</span></td>
             <td style="white-space:nowrap">
               <button class="btn btn-ghost btn-sm" onclick="viewSaleDetail('${s.id}')" title="Ver detalhes">👁️</button>
@@ -1058,7 +1058,7 @@ function viewSaleDetail(id){
       <div class="calc-row"><span>Subtotal bruto:</span><span>${R(s.total)}</span></div>
       ${s.feeValue>0?`<div class="calc-row"><span>Taxa ${payLabel(s.payMethod)} (${s.feePct}%):</span><span style="color:var(--red-l)">-${R(s.feeValue)}</span></div>`:''}
       <div class="calc-row total"><span>💰 Total recebido:</span><span style="color:var(--green-l)">${R(s.netTotal)}</span></div>
-      <div class="calc-row" style="margin-top:4px"><span>📈 Lucro estimado:</span><span style="color:var(--blue-l);font-weight:600">${R(s.profit)}</span></div>
+      <div class="calc-row" style="margin-top:4px"><span>📈 Lucro líquido (após taxa):</span><span style="color:${(s.profit-s.feeValue)<0?'var(--red-l)':'var(--blue-l)'};font-weight:600">${R(s.profit-s.feeValue)}</span></div>
     </div>
     <div class="form-actions" style="margin-top:16px">
       <button class="btn btn-ghost" onclick="_closeModal()">Fechar</button>
@@ -1932,7 +1932,7 @@ function gerarPDF(){
   const lucroMes     = paidSalesMes.reduce((a,s)=>a+s.profit,0);
   const despesasMes  = state.cashflow.filter(c=>c.type==='out'&&c.date&&c.date.startsWith(mesAtualKey)).reduce((a,c)=>a+c.value,0);
   const taxasMes     = paidSalesMes.reduce((a,s)=>a+s.feeValue,0);
-  const margemMes    = receitaMes>0 ? (lucroMes/receitaMes*100).toFixed(1) : '0.0';
+  const margemMes    = receitaMes>0 ? ((lucroMes-taxasMes)/receitaMes*100).toFixed(1) : '0.0';
   const payBreakdownMes = {};
   paidSalesMes.forEach(s=>{payBreakdownMes[s.payMethod]=(payBreakdownMes[s.payMethod]||0)+s.netTotal;});
 
@@ -2075,15 +2075,13 @@ function gerarPDF(){
       <p>2. Detalhamento das Vendas</p>
       <p>3. Fluxo de Caixa</p>
       <p>4. Posição de Estoque</p>
-      ${obs?`<h2 class="abnt-section">OBSERVAÇÕES</h2><p>${obs}</p>`:''}
-    </div>
-    <div class="abnt-section">
-      <h2>PAINEL GERAL — SITUAÇÃO ATUAL (${mesAtualNome.toUpperCase()})</h2>
+      ${obs?`<h3>OBSERVAÇÕES</h3><p>${obs}</p>`:''}
+      <h2 style="margin-top:24pt">PAINEL GERAL — SITUAÇÃO ATUAL (${mesAtualNome.toUpperCase()})</h2>
       <p>Indicadores extraídos diretamente da Dashboard do sistema, referentes ao mês corrente.</p>
       <table>
         <tr><th>Indicador</th><th>Valor</th></tr>
         <tr><td>Receita líquida (mês)</td><td>${R(receitaMes)}</td></tr>
-        <tr><td>Lucro estimado (mês)</td><td>${R(lucroMes)} (margem de ${margemMes}%)</td></tr>
+        <tr><td>Lucro líquido, após taxas (mês)</td><td>${R(lucroMes-taxasMes)} (margem de ${margemMes}%)</td></tr>
         <tr><td>Despesas (mês)</td><td>${R(despesasMes)}</td></tr>
         <tr><td>Taxas de maquininha/gateway (mês)</td><td>${R(taxasMes)}</td></tr>
         <tr><td>Vendas pagas no mês</td><td>${paidSalesMes.length}</td></tr>
