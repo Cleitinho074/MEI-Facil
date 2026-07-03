@@ -241,6 +241,19 @@ input[type="checkbox"]{border-radius:4px}
   // Inicializa o modo escuro antes de renderizar a página para evitar piscos brancos
   const savedTheme = localStorage.getItem('mei_theme') || 'light';
   document.documentElement.setAttribute('data-theme', savedTheme);
+
+  // Helper Global para adicionar Variações/Sabores
+  function getVariationRow(name = '', price = '') {
+    return `
+      <div class="variation-row" style="display:flex;gap:8px;align-items:center;margin-top:4px;">
+        <input type="text" class="var-name" placeholder="Ex: Carne, Queijo..." value="${name}" style="flex:2">
+        <input type="number" step="0.01" class="var-price" placeholder="Preço (R$)" value="${price}" style="flex:1">
+        <button type="button" class="remove-item-btn" onclick="this.parentElement.remove()">×</button>
+      </div>`;
+  }
+  window.addVariationRow = function() {
+    document.getElementById('p-variations-container').insertAdjacentHTML('beforeend', getVariationRow());
+  }
 </script>
 </head>
 <body>
@@ -361,6 +374,7 @@ async function loadProducts(){
     id: p.id, name: p.name, type: p.type, unit: p.unit,
     cost: +p.cost, marginPct: +p.margin_pct, price: +p.price,
     stock: p.stock === null || p.stock === undefined ? null : +p.stock,
+    variations: p.variations || []
   }));
 }
 async function loadSales(){
@@ -841,7 +855,7 @@ async function deleteClientAsync(id){
 }
 
 // ══════════════════════════════════════
-// PRODUCTS (with stock)
+// PRODUCTS (with stock & variations)
 // ══════════════════════════════════════
 function renderProducts(el){
   el.innerHTML=`
@@ -851,7 +865,7 @@ function renderProducts(el){
     </div>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Nome</th><th>Tipo</th><th>Custo</th><th>Margem</th><th>Preço Venda</th><th>Estoque</th><th>Ações</th></tr></thead>
+        <thead><tr><th>Nome</th><th>Tipo</th><th>Custo base</th><th>Margem</th><th>Preço base</th><th>Variações</th><th>Estoque</th><th>Ações</th></tr></thead>
         <tbody>
           ${state.products.map(p=>`<tr>
             <td><strong>${p.name}</strong></td>
@@ -859,6 +873,7 @@ function renderProducts(el){
             <td>${R(p.cost)}</td>
             <td><span class="badge badge-amber">${p.marginPct}%</span></td>
             <td style="font-weight:700;color:var(--green-l)">${R(p.price)}</td>
+            <td>${p.variations && p.variations.length > 0 ? `<span class="badge badge-purple">${p.variations.length} sabor(es)</span>` : '<span style="color:var(--muted);font-size:12px">Nenhuma</span>'}</td>
             <td>${p.type==='service'?'<span style="color:var(--muted);font-size:12px">N/A</span>':(p.stock??0)<=5?`<span class="stock-low">⚠️ ${p.stock??0} un</span>`:`<span class="stock-ok">${p.stock??0} un</span>`}</td>
             <td>
               <button class="btn btn-ghost btn-sm" onclick="openProductModal('${p.id}')">✏️</button>
@@ -871,10 +886,10 @@ function renderProducts(el){
     </div>`;
 }
 function openProductModal(id){
-  const p=id?state.products.find(x=>x.id===id):{type:'service',marginPct:100,unit:'un',stock:0};
+  const p=id?state.products.find(x=>x.id===id):{type:'service',marginPct:100,unit:'un',stock:0, variations:[]};
   openModal(`
     <div class="modal-title">${id?'Editar':'Novo'} Produto/Serviço</div>
-    <div class="form-group"><label>Nome</label><input id="p-name" value="${p.name||''}" placeholder="Ex: Coxinha"/></div>
+    <div class="form-group"><label>Nome Base</label><input id="p-name" value="${p.name||''}" placeholder="Ex: Pastel"/></div>
     <div class="form-row">
       <div class="form-group"><label>Tipo</label>
         <select id="p-type" onchange="toggleStockField()">
@@ -885,17 +900,26 @@ function openProductModal(id){
       <div class="form-group"><label>Unidade</label><input id="p-unit" value="${p.unit||'un'}" placeholder="un, kg, m..."/></div>
     </div>
     <div class="form-row">
-      <div class="form-group"><label>Custo (R$)</label><input id="p-cost" type="number" min="0" step="0.01" value="${p.cost||0}" oninput="calcPrice()"/></div>
+      <div class="form-group"><label>Custo Base (R$)</label><input id="p-cost" type="number" min="0" step="0.01" value="${p.cost||0}" oninput="calcPrice()"/></div>
       <div class="form-group"><label>Margem de Lucro (%)</label><input id="p-margin" type="number" min="0" value="${p.marginPct||100}" oninput="calcPrice()"/></div>
     </div>
     <div class="calc-box" id="calc-box">
-      <div class="calc-row"><span>Custo:</span><span id="calc-cost">R$ 0,00</span></div>
-      <div class="calc-row"><span id="calc-margin-lbl">Lucro:</span><span id="calc-profit">R$ 0,00</span></div>
-      <div class="calc-row total"><span>💰 Preço sugerido:</span><span id="calc-price" style="color:var(--green-l)">R$ 0,00</span></div>
+      <div class="calc-row"><span>Custo Base:</span><span id="calc-cost">R$ 0,00</span></div>
+      <div class="calc-row"><span id="calc-margin-lbl">Lucro Base:</span><span id="calc-profit">R$ 0,00</span></div>
+      <div class="calc-row total"><span>💰 Preço base sugerido:</span><span id="calc-price" style="color:var(--green-l)">R$ 0,00</span></div>
     </div>
-    <div class="form-group" style="margin-top:12px"><label>Preço de Venda (R$)</label><input id="p-price" type="number" min="0" step="0.01" value="${p.price||0}"/></div>
+    <div class="form-group" style="margin-top:12px"><label>Preço Base de Venda (R$)</label><input id="p-price" type="number" min="0" step="0.01" value="${p.price||0}"/></div>
+    
+    <div class="form-group" style="margin-top:12px; padding:12px; background:var(--bg); border-radius:8px;">
+      <label>Sabores / Variações (Opcional)</label>
+      <div id="p-variations-container" style="display:flex;flex-direction:column;gap:8px;margin-bottom:8px;">
+        ${(p.variations || []).map(v => getVariationRow(v.name, v.price)).join('')}
+      </div>
+      <button type="button" class="btn btn-ghost btn-sm" onclick="addVariationRow()">+ Adicionar Sabor/Variação</button>
+    </div>
+
     <div id="stock-field" style="display:${p.type==='product'?'block':'none'}">
-      <div class="form-group"><label>Estoque inicial</label><input id="p-stock" type="number" min="0" value="${p.stock||0}"/></div>
+      <div class="form-group"><label>Estoque (compartilhado entre sabores)</label><input id="p-stock" type="number" min="0" value="${p.stock||0}"/></div>
     </div>
     <div class="form-actions">
       <button class="btn btn-ghost" onclick="_closeModal()">Cancelar</button>
@@ -921,6 +945,15 @@ function calcPrice(){
 }
 function saveProduct(id){
   const type=document.getElementById('p-type').value;
+  
+  const varRows = document.querySelectorAll('.variation-row');
+  const variations = [];
+  varRows.forEach(row => {
+    const vName = row.querySelector('.var-name').value.trim();
+    const vPrice = parseFloat(row.querySelector('.var-price').value);
+    if(vName && !isNaN(vPrice)) variations.push({ name: vName, price: vPrice });
+  });
+
   const obj={
     name:document.getElementById('p-name').value.trim(),
     type,
@@ -929,9 +962,10 @@ function saveProduct(id){
     margin_pct:parseFloat(document.getElementById('p-margin').value)||0,
     price:parseFloat(document.getElementById('p-price').value)||0,
     stock:type==='product'?(parseInt(document.getElementById('p-stock').value)||0):null,
+    variations: variations
   };
   if(!obj.name)return toast('Nome é obrigatório','error');
-  if(!obj.price)return toast('Informe o preço de venda','error');
+  if(!obj.price && obj.variations.length === 0)return toast('Informe o preço de venda ou crie variações','error');
   saveProductAsync(id,obj);
 }
 async function saveProductAsync(id,obj){
@@ -1101,7 +1135,14 @@ function openSaleModal(){
         <div class="sale-item-add">
           <select id="add-product" style="flex:1">
             <option value="">Selecionar produto/serviço...</option>
-            ${state.products.map(p=>`<option value="${p.id}" data-price="${p.price}" data-cost="${p.cost}" data-stock="${p.stock}" data-type="${p.type}">${p.name} — ${R(p.price)}${p.type==='product'?` (estoque: ${p.stock??'∞'})`:''}</option>`).join('')}
+            ${state.products.flatMap(p => {
+              if (p.variations && p.variations.length > 0) {
+                return p.variations.map(v => 
+                  `<option value="${p.id}" data-fullname="${p.name} - ${v.name}" data-price="${v.price}" data-cost="${p.cost}" data-stock="${p.stock}" data-type="${p.type}">${p.name} - ${v.name} — ${R(v.price)}${p.type==='product'?` (estoque: ${p.stock??'∞'})`:''}</option>`
+                );
+              }
+              return `<option value="${p.id}" data-fullname="${p.name}" data-price="${p.price}" data-cost="${p.cost}" data-stock="${p.stock}" data-type="${p.type}">${p.name} — ${R(p.price)}${p.type==='product'?` (estoque: ${p.stock??'∞'})`:''}</option>`;
+            }).join('')}
           </select>
           <button class="btn btn-primary btn-sm" onclick="addSaleItem()">+ Adicionar</button>
         </div>
@@ -1170,6 +1211,7 @@ function addSaleItem(){
   const opt=sel.selectedOptions[0];
   if(!opt.value)return toast('Selecione um produto','error');
   const pid=opt.value;
+  const fullname=opt.dataset.fullname;
   const price=parseFloat(opt.dataset.price);
   const cost=parseFloat(opt.dataset.cost);
   const stock=opt.dataset.stock==='null'?null:parseInt(opt.dataset.stock);
@@ -1178,9 +1220,9 @@ function addSaleItem(){
     const alreadyInCart=saleItems.filter(i=>i.productId===pid).reduce((a,i)=>a+i.qty,0);
     if(alreadyInCart>=stock)return toast(`Estoque insuficiente (${stock} un disponíveis)`,'error');
   }
-  const existing=saleItems.find(i=>i.productId===pid);
+  const existing=saleItems.find(i=>i.productId===pid && i.name===fullname);
   if(existing){existing.qty++;existing.subtotal=+(existing.qty*existing.unitPrice).toFixed(2);}
-  else saleItems.push({productId:pid,name:sel.selectedOptions[0].text.split(' — ')[0],qty:1,unitPrice:price,cost,subtotal:price});
+  else saleItems.push({productId:pid,name:fullname,qty:1,unitPrice:price,cost,subtotal:price});
   sel.value='';
   renderSaleRows();
   updateSaleSummary();
@@ -1563,14 +1605,14 @@ function reportProdutos(){
     <div class="card">
       <div class="section-title" style="margin-bottom:14px">📦 Análise de Produtos & Serviços</div>
       <table>
-        <thead><tr><th>Nome</th><th>Tipo</th><th>Custo</th><th>Preço</th><th>Lucro unit.</th><th>Estoque</th><th>Qtd vendida</th></tr></thead>
+        <thead><tr><th>Nome</th><th>Tipo</th><th>Custo base</th><th>Preço base</th><th>Variações</th><th>Estoque</th><th>Qtd vendida</th></tr></thead>
         <tbody>
           ${state.products.map(p=>`<tr>
             <td><strong>${p.name}</strong></td>
             <td><span class="badge ${p.type==='service'?'badge-blue':'badge-green'}">${p.type==='service'?'Serviço':'Produto'}</span></td>
             <td>${R(p.cost)}</td>
             <td style="font-weight:700">${R(p.price)}</td>
-            <td style="color:var(--green-l);font-weight:600">${R(p.price-p.cost)}</td>
+            <td>${p.variations && p.variations.length > 0 ? `<span class="badge badge-purple">${p.variations.length} sabor(es)</span>` : 'Nenhuma'}</td>
             <td>${p.type==='product'?((p.stock??0)<=5?`<span class="stock-low">⚠️ ${p.stock??0}`:`<span class="stock-ok">${p.stock??0}`)+'</span>':'—'}</td>
             <td style="font-weight:600">${salesCount[p.id]||0} un</td>
           </tr>`).join('')}
@@ -1694,10 +1736,11 @@ function openClientDetailModal(clientId){
       <div style="font-weight:700;margin-bottom:10px">📋 Histórico de compras</div>
       <div style="max-height:260px;overflow-y:auto">
         <table style="min-width:unset">
-          <thead><tr><th>Data</th><th>Itens</th><th>Pagamento</th><th>Total</th></tr></thead>
+          <thead><tr><th>Data</th><th>Hora</th><th>Itens</th><th>Pagamento</th><th>Total</th></tr></thead>
           <tbody>
             ${[...clientSales].reverse().map(s=>`<tr>
               <td style="white-space:nowrap">${fmt(s.date)}</td>
+              <td style="color:var(--muted)">${s.time||'—'}</td>
               <td style="font-size:12px">${s.items.map(i=>i.qty+'x '+i.name).join(', ')}</td>
               <td style="font-size:12px">${payIcon(s.payMethod)} ${payLabel(s.payMethod)}</td>
               <td style="font-weight:700;color:var(--green-l);white-space:nowrap">${R(s.netTotal)}</td>
@@ -1713,8 +1756,8 @@ function openClientDetailModal(clientId){
 }
 function reportMEI(){
   const pct=(state.yearRevenue/MEI_LIMIT*100);
-  const months=new Date().getMonth()+1;
-  const projectedAnnual=(state.yearRevenue/months)*12;
+  const meses=new Date().getMonth()+1;
+  const projectedAnnual=(state.yearRevenue/meses)*12;
   return `
     <div class="card" style="margin-bottom:16px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
@@ -1765,7 +1808,6 @@ function reportPDF(){
   const dataEmissao = now.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'});
   const horaEmissao = now.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
 
-  // Tipos de relatório disponíveis
   const tipos = [
     {id:'mensal',    label:'📊 Relatório Mensal Completo',      desc:'Receitas, despesas, lucro, vendas e fluxo de caixa do mês atual'},
     {id:'vendas',    label:'🛒 Relatório de Vendas',            desc:'Detalhamento de todas as vendas com itens, clientes e formas de pagamento'},
@@ -1856,14 +1898,12 @@ function reportPDF(){
     </div>`;
 }
 
-// Mostra o seletor de cliente específico apenas quando "Relatório de Clientes" está selecionado
 function toggleClientReportSelector(){
   const tipo = document.querySelector('input[name="report-type"]:checked')?.value;
   const box = document.getElementById('report-client-box');
   if(box) box.style.display = tipo==='clientes' ? 'block' : 'none';
 }
 
-// Preenche De/Até (ou o campo de dia avulso) a partir dos atalhos de período
 function setReportPeriod(mode){
   document.querySelectorAll('#period-quick-pills .pay-pill').forEach(p=>p.classList.remove('active'));
   document.getElementById('pill-period-'+mode)?.classList.add('active');
@@ -1927,7 +1967,6 @@ function gerarPDF(){
   const dataEmissao = now.toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'});
   const mesAtualNome = now.toLocaleDateString('pt-BR',{month:'long',year:'numeric'});
 
-  // Filtra vendas pelo período
   const vendasPeriodo = state.sales.filter(s=>{
     if(!from&&!to)return true;
     const d=new Date(s.date+'T00:00:00');
@@ -1935,7 +1974,6 @@ function gerarPDF(){
   });
   const vendasPagas = vendasPeriodo.filter(s=>s.status==='paid');
 
-  // Filtra cashflow pelo período
   const cfPeriodo = state.cashflow.filter(c=>{
     if(!from&&!to)return true;
     const d=new Date(c.date+'T00:00:00');
@@ -1951,7 +1989,6 @@ function gerarPDF(){
   const pctMEI = (state.yearRevenue/MEI_LIMIT*100).toFixed(1);
   const meses  = new Date().getMonth()+1;
 
-  // ── Dados iguais aos exibidos na Dashboard (mês atual, independente do período escolhido no filtro) ──
   const mesAtualKey = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
   const paidSalesMes = state.sales.filter(s=>s.status==='paid'&&s.date&&s.date.startsWith(mesAtualKey));
   const receitaMes   = paidSalesMes.reduce((a,s)=>a+s.netTotal,0);
@@ -1971,7 +2008,6 @@ function gerarPDF(){
     fluxo:  'RELATÓRIO DE FLUXO DE CAIXA',
   };
 
-  // ── Conteúdo por tipo ──
   let seccoes = '';
 
   if(tipo==='mensal'||tipo==='vendas'){
@@ -2138,7 +2174,6 @@ function gerarPDF(){
       </table>`;
   }
 
-  // ── Monta o HTML completo do relatório ABNT ──
   const html = `
     <div class="abnt-cover">
       <p><strong>${autor}</strong></p>
@@ -2184,7 +2219,6 @@ function gerarPDF(){
       <p style="font-size:10pt;text-align:center">Documento gerado eletronicamente — não requer assinatura.</p>
     </div>`;
 
-  // Injeta no div oculto e imprime
   const printEl = document.getElementById('abnt-print');
   printEl.innerHTML = html;
   setTimeout(()=>{ window.print(); },200);
@@ -2324,9 +2358,6 @@ async function adminSeedReset(){
 
 // ══════════════════════════════════════
 // INIT
-// ══════════════════════════════════════
-// ══════════════════════════════════════
-// DARK MODE
 // ══════════════════════════════════════
 function applyTheme(dark){
   document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
