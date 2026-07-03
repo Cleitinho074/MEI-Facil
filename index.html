@@ -129,6 +129,9 @@ tr:hover td{background:#F7FAFC}
 label{display:block;font-size:13px;font-weight:600;color:var(--muted);margin-bottom:5px}
 input,select,textarea{width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:14px;font-family:inherit;transition:border-color .15s;outline:none}
 input:focus,select:focus,textarea:focus{border-color:var(--blue-l)}
+/* Radio/checkbox não devem herdar width:100%/padding/border do input genérico — isso fazia os cards de seleção "estourarem" e o texto sair da caixa */
+input[type="radio"],input[type="checkbox"]{width:16px;height:16px;min-width:16px;padding:0;margin:0;border-radius:50%;flex-shrink:0;accent-color:var(--blue-l)}
+input[type="checkbox"]{border-radius:4px}
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .form-row-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
 .form-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:20px;flex-wrap:wrap}
@@ -211,7 +214,8 @@ input:focus,select:focus,textarea:focus{border-color:var(--blue-l)}
 }
 /* ── Impressão ABNT ── */
 @media print{
-  body,.sidebar,.topbar,.tabs,#report-tabs,.btn,.btn-primary,.btn-ghost,.section-header button{display:none!important}
+  /* Oculta apenas o app e o modal — NUNCA o body, senão o #abnt-print (filho do body) some junto mesmo com display:block!important */
+  #auth-page,#app,.modal-overlay,.toast{display:none!important}
   #abnt-print{display:block!important}
   @page{size:A4;margin:3cm 2.5cm 2cm 3cm}
   #abnt-print{font-family:'Times New Roman',Times,serif;font-size:12pt;line-height:1.5;color:#000;background:#fff}
@@ -237,6 +241,19 @@ input:focus,select:focus,textarea:focus{border-color:var(--blue-l)}
   // Inicializa o modo escuro antes de renderizar a página para evitar piscos brancos
   const savedTheme = localStorage.getItem('mei_theme') || 'light';
   document.documentElement.setAttribute('data-theme', savedTheme);
+
+  // Helper Global para adicionar Variações/Sabores
+  function getVariationRow(name = '', price = '') {
+    return `
+      <div class="variation-row" style="display:flex;gap:8px;align-items:center;margin-top:4px;">
+        <input type="text" class="var-name" placeholder="Ex: Carne, Queijo..." value="${name}" style="flex:2">
+        <input type="number" step="0.01" class="var-price" placeholder="Preço (R$)" value="${price}" style="flex:1">
+        <button type="button" class="remove-item-btn" onclick="this.parentElement.remove()">×</button>
+      </div>`;
+  }
+  window.addVariationRow = function() {
+    document.getElementById('p-variations-container').insertAdjacentHTML('beforeend', getVariationRow());
+  }
 </script>
 </head>
 <body>
@@ -279,6 +296,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--blue-l)}
       <div class="nav-item" onclick="navigate('cashflow')"><span class="nav-icon">💰</span><span class="nav-label">Fluxo de Caixa</span></div>
       <div class="nav-item" onclick="navigate('reports')"><span class="nav-icon">📈</span><span class="nav-label">Relatórios</span></div>
       <div class="nav-item" onclick="navigate('settings')"><span class="nav-icon">⚙️</span><span class="nav-label">Configurações</span></div>
+      <div class="nav-item" id="nav-adminseed" style="display:none" onclick="navigate('adminseed')"><span class="nav-icon">🛠️</span><span class="nav-label">Admin (dados demo)</span></div>
     </div>
     <div class="collapse-btn" onclick="toggleSidebar()">‹</div>
   </nav>
@@ -356,6 +374,7 @@ async function loadProducts(){
     id: p.id, name: p.name, type: p.type, unit: p.unit,
     cost: +p.cost, marginPct: +p.margin_pct, price: +p.price,
     stock: p.stock === null || p.stock === undefined ? null : +p.stock,
+    variations: p.variations || []
   }));
 }
 async function loadSales(){
@@ -387,7 +406,7 @@ async function loadRevenueHistory(){
 }
 function mapSaleFromApi(s){
   return {
-    id: s.id, date: String(s.sale_date||'').substring(0,10), clientId: s.client_id, clientName: s.client_name || 'Cliente avulso',
+    id: s.id, date: String(s.sale_date||'').substring(0,10), time: s.sale_time || (String(s.sale_date||'').length>10?String(s.sale_date).substring(11,16):''), clientId: s.client_id, clientName: s.client_name || 'Cliente avulso',
     items: (s.items || []).map(i => ({
       productId: i.product_id, name: i.product_name, qty: +i.qty,
       unitPrice: +i.unit_price, cost: +i.cost, subtotal: +i.subtotal,
@@ -495,6 +514,9 @@ async function loginSuccess(user){
   document.getElementById('app').style.display = 'flex';
   document.getElementById('user-badge').textContent = (user.name||'U')[0].toUpperCase();
   updateTopbarDate();
+  const isDemo = (user.email||'').toLowerCase() === 'demo@meifacil.com.br';
+  const adminNav = document.getElementById('nav-adminseed');
+  if(adminNav) adminNav.style.display = isDemo ? 'flex' : 'none';
   await loadAllData();
   navigate('dashboard');
   toast(`Bem-vindo(a), ${(user.name||'').split(' ')[0]}! 👋`,'success');
@@ -521,12 +543,12 @@ function logout(){
 // ══════════════════════════════════════
 // NAV
 // ══════════════════════════════════════
-const pageNames={dashboard:'Dashboard',clients:'Clientes',products:'Produtos & Serviços',sales:'Vendas',cashflow:'Fluxo de Caixa',reports:'Relatórios',settings:'Configurações'};
+const pageNames={dashboard:'Dashboard',clients:'Clientes',products:'Produtos & Serviços',sales:'Vendas',cashflow:'Fluxo de Caixa',reports:'Relatórios',settings:'Configurações',adminseed:'Admin (dados demo)'};
 async function navigate(page){
   state.page=page;
   document.getElementById('page-title').textContent=pageNames[page];
   document.querySelectorAll('.nav-item').forEach(el=>el.classList.remove('active'));
-  const idx=['dashboard','clients','products','sales','cashflow','reports','settings'].indexOf(page);
+  const idx=['dashboard','clients','products','sales','cashflow','reports','settings','adminseed'].indexOf(page);
   if(idx>=0)document.querySelectorAll('.nav-item')[idx].classList.add('active');
   document.getElementById('sidebar').classList.remove('mobile-open');
   await renderPage(page);
@@ -584,7 +606,7 @@ async function renderPage(page){
   if(page==='dashboard') await Promise.all([loadDashboardStats(), loadSales(), loadCashflow()]);
   if(page==='reports')   await Promise.all([loadSales(), loadProducts(), loadCashflow(), loadDashboardStats(), loadRevenueHistory()]);
   ({dashboard:renderDashboard,clients:renderClients,products:renderProducts,
-    sales:renderSales,cashflow:renderCashflow,reports:renderReports,settings:renderSettings}
+    sales:renderSales,cashflow:renderCashflow,reports:renderReports,settings:renderSettings,adminseed:renderAdminSeed}
   [page]||renderDashboard)(el);
 }
 
@@ -833,7 +855,7 @@ async function deleteClientAsync(id){
 }
 
 // ══════════════════════════════════════
-// PRODUCTS (with stock)
+// PRODUCTS (with stock & variations)
 // ══════════════════════════════════════
 function renderProducts(el){
   el.innerHTML=`
@@ -843,7 +865,7 @@ function renderProducts(el){
     </div>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Nome</th><th>Tipo</th><th>Custo</th><th>Margem</th><th>Preço Venda</th><th>Estoque</th><th>Ações</th></tr></thead>
+        <thead><tr><th>Nome</th><th>Tipo</th><th>Custo base</th><th>Margem</th><th>Preço base</th><th>Variações</th><th>Estoque</th><th>Ações</th></tr></thead>
         <tbody>
           ${state.products.map(p=>`<tr>
             <td><strong>${p.name}</strong></td>
@@ -851,6 +873,7 @@ function renderProducts(el){
             <td>${R(p.cost)}</td>
             <td><span class="badge badge-amber">${p.marginPct}%</span></td>
             <td style="font-weight:700;color:var(--green-l)">${R(p.price)}</td>
+            <td>${p.variations && p.variations.length > 0 ? `<span class="badge badge-purple">${p.variations.length} sabor(es)</span>` : '<span style="color:var(--muted);font-size:12px">Nenhuma</span>'}</td>
             <td>${p.type==='service'?'<span style="color:var(--muted);font-size:12px">N/A</span>':(p.stock??0)<=5?`<span class="stock-low">⚠️ ${p.stock??0} un</span>`:`<span class="stock-ok">${p.stock??0} un</span>`}</td>
             <td>
               <button class="btn btn-ghost btn-sm" onclick="openProductModal('${p.id}')">✏️</button>
@@ -863,10 +886,10 @@ function renderProducts(el){
     </div>`;
 }
 function openProductModal(id){
-  const p=id?state.products.find(x=>x.id===id):{type:'service',marginPct:100,unit:'un',stock:0};
+  const p=id?state.products.find(x=>x.id===id):{type:'service',marginPct:100,unit:'un',stock:0, variations:[]};
   openModal(`
     <div class="modal-title">${id?'Editar':'Novo'} Produto/Serviço</div>
-    <div class="form-group"><label>Nome</label><input id="p-name" value="${p.name||''}" placeholder="Ex: Coxinha"/></div>
+    <div class="form-group"><label>Nome Base</label><input id="p-name" value="${p.name||''}" placeholder="Ex: Pastel"/></div>
     <div class="form-row">
       <div class="form-group"><label>Tipo</label>
         <select id="p-type" onchange="toggleStockField()">
@@ -877,17 +900,26 @@ function openProductModal(id){
       <div class="form-group"><label>Unidade</label><input id="p-unit" value="${p.unit||'un'}" placeholder="un, kg, m..."/></div>
     </div>
     <div class="form-row">
-      <div class="form-group"><label>Custo (R$)</label><input id="p-cost" type="number" min="0" step="0.01" value="${p.cost||0}" oninput="calcPrice()"/></div>
+      <div class="form-group"><label>Custo Base (R$)</label><input id="p-cost" type="number" min="0" step="0.01" value="${p.cost||0}" oninput="calcPrice()"/></div>
       <div class="form-group"><label>Margem de Lucro (%)</label><input id="p-margin" type="number" min="0" value="${p.marginPct||100}" oninput="calcPrice()"/></div>
     </div>
     <div class="calc-box" id="calc-box">
-      <div class="calc-row"><span>Custo:</span><span id="calc-cost">R$ 0,00</span></div>
-      <div class="calc-row"><span id="calc-margin-lbl">Lucro:</span><span id="calc-profit">R$ 0,00</span></div>
-      <div class="calc-row total"><span>💰 Preço sugerido:</span><span id="calc-price" style="color:var(--green-l)">R$ 0,00</span></div>
+      <div class="calc-row"><span>Custo Base:</span><span id="calc-cost">R$ 0,00</span></div>
+      <div class="calc-row"><span id="calc-margin-lbl">Lucro Base:</span><span id="calc-profit">R$ 0,00</span></div>
+      <div class="calc-row total"><span>💰 Preço base sugerido:</span><span id="calc-price" style="color:var(--green-l)">R$ 0,00</span></div>
     </div>
-    <div class="form-group" style="margin-top:12px"><label>Preço de Venda (R$)</label><input id="p-price" type="number" min="0" step="0.01" value="${p.price||0}"/></div>
+    <div class="form-group" style="margin-top:12px"><label>Preço Base de Venda (R$)</label><input id="p-price" type="number" min="0" step="0.01" value="${p.price||0}"/></div>
+    
+    <div class="form-group" style="margin-top:12px; padding:12px; background:var(--bg); border-radius:8px;">
+      <label>Sabores / Variações (Opcional)</label>
+      <div id="p-variations-container" style="display:flex;flex-direction:column;gap:8px;margin-bottom:8px;">
+        ${(p.variations || []).map(v => getVariationRow(v.name, v.price)).join('')}
+      </div>
+      <button type="button" class="btn btn-ghost btn-sm" onclick="addVariationRow()">+ Adicionar Sabor/Variação</button>
+    </div>
+
     <div id="stock-field" style="display:${p.type==='product'?'block':'none'}">
-      <div class="form-group"><label>Estoque inicial</label><input id="p-stock" type="number" min="0" value="${p.stock||0}"/></div>
+      <div class="form-group"><label>Estoque (compartilhado entre sabores)</label><input id="p-stock" type="number" min="0" value="${p.stock||0}"/></div>
     </div>
     <div class="form-actions">
       <button class="btn btn-ghost" onclick="_closeModal()">Cancelar</button>
@@ -913,6 +945,15 @@ function calcPrice(){
 }
 function saveProduct(id){
   const type=document.getElementById('p-type').value;
+  
+  const varRows = document.querySelectorAll('.variation-row');
+  const variations = [];
+  varRows.forEach(row => {
+    const vName = row.querySelector('.var-name').value.trim();
+    const vPrice = parseFloat(row.querySelector('.var-price').value);
+    if(vName && !isNaN(vPrice)) variations.push({ name: vName, price: vPrice });
+  });
+
   const obj={
     name:document.getElementById('p-name').value.trim(),
     type,
@@ -921,9 +962,10 @@ function saveProduct(id){
     margin_pct:parseFloat(document.getElementById('p-margin').value)||0,
     price:parseFloat(document.getElementById('p-price').value)||0,
     stock:type==='product'?(parseInt(document.getElementById('p-stock').value)||0):null,
+    variations: variations
   };
   if(!obj.name)return toast('Nome é obrigatório','error');
-  if(!obj.price)return toast('Informe o preço de venda','error');
+  if(!obj.price && obj.variations.length === 0)return toast('Informe o preço de venda ou crie variações','error');
   saveProductAsync(id,obj);
 }
 async function saveProductAsync(id,obj){
@@ -992,12 +1034,12 @@ async function saveStockAsync(id,mode,value){
 function renderSales(el){
   const paid=state.sales.filter(s=>s.status==='paid');
   const total=paid.reduce((a,s)=>a+s.netTotal,0);
-  const profit=paid.reduce((a,s)=>a+s.profit,0);
+  const profit=paid.reduce((a,s)=>a+(s.profit-s.feeValue),0);
   const fees=paid.reduce((a,s)=>a+s.feeValue,0);
   el.innerHTML=`
     <div class="cards-grid" style="margin-bottom:20px">
       <div class="card card-metric"><div class="card-label">Total líquido (mês)</div><div class="card-value green">${R(total)}</div></div>
-      <div class="card card-metric"><div class="card-label">Lucro estimado</div><div class="card-value blue">${R(profit)}</div></div>
+      <div class="card card-metric"><div class="card-label">Lucro líquido (após taxas)</div><div class="card-value blue">${R(profit)}</div></div>
       <div class="card card-metric"><div class="card-label">Taxas cobradas</div><div class="card-value amber">${R(fees)}</div></div>
       <div class="card card-metric"><div class="card-label">Pendentes</div><div class="card-value amber">${state.sales.filter(s=>s.status==='pending').length}</div></div>
     </div>
@@ -1007,16 +1049,17 @@ function renderSales(el){
     </div>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Data</th><th>Cliente</th><th>Itens</th><th>Pagamento</th><th>Taxa</th><th>Total líq.</th><th>Lucro</th><th>Status</th><th>Ações</th></tr></thead>
+        <thead><tr><th>Data</th><th>Hora</th><th>Cliente</th><th>Itens</th><th>Pagamento</th><th>Taxa</th><th>Total líq.</th><th>Lucro</th><th>Status</th><th>Ações</th></tr></thead>
         <tbody>
           ${[...state.sales].sort((a,b)=>String(b.date).localeCompare(String(a.date))).map(s=>`<tr>
             <td>${fmt(s.date)}</td>
+            <td style="color:var(--muted)">${s.time||'—'}</td>
             <td>${s.clientName||'<span style="color:var(--muted)">Avulso</span>'}</td>
             <td style="font-size:12px;color:var(--muted);max-width:160px">${s.items.map(i=>`${i.qty}× ${i.name}`).join('<br>')}</td>
             <td>${payIcon(s.payMethod)} ${payLabel(s.payMethod)}</td>
             <td style="color:var(--amber);font-size:12px">${s.feeValue>0?'-'+R(s.feeValue):'—'}</td>
             <td style="font-weight:700">${R(s.netTotal)}</td>
-            <td style="color:var(--green-l);font-weight:600">${s.status==='paid'?R(s.profit):'—'}</td>
+            <td style="font-weight:600;color:${s.status==='paid'&&(s.profit-s.feeValue)<0?'var(--red-l)':'var(--green-l)'}">${s.status==='paid'?R(s.profit-s.feeValue):'—'}</td>
             <td><span class="badge ${s.status==='paid'?'badge-green':'badge-amber'}" style="cursor:pointer" onclick="toggleSaleStatus('${s.id}')">${s.status==='paid'?'✅ Pago':'⏳ Pendente'}</span></td>
             <td style="white-space:nowrap">
               <button class="btn btn-ghost btn-sm" onclick="viewSaleDetail('${s.id}')" title="Ver detalhes">👁️</button>
@@ -1033,7 +1076,7 @@ function viewSaleDetail(id){
   const s=state.sales.find(x=>x.id===id);
   if(!s)return;
   openModal(`
-    <div class="modal-title">🧾 Venda — ${fmt(s.date)}</div>
+    <div class="modal-title">🧾 Venda — ${fmt(s.date)}${s.time?' às '+s.time:''}</div>
     <div style="margin-bottom:16px;display:flex;gap:12px;flex-wrap:wrap">
       <div><span style="color:var(--muted);font-size:12px">CLIENTE</span><br><strong>${s.clientName||'Cliente avulso'}</strong></div>
       <div><span style="color:var(--muted);font-size:12px">STATUS</span><br><span class="badge ${s.status==='paid'?'badge-green':'badge-amber'}">${s.status==='paid'?'✅ Pago':'⏳ Pendente'}</span></div>
@@ -1054,7 +1097,7 @@ function viewSaleDetail(id){
       <div class="calc-row"><span>Subtotal bruto:</span><span>${R(s.total)}</span></div>
       ${s.feeValue>0?`<div class="calc-row"><span>Taxa ${payLabel(s.payMethod)} (${s.feePct}%):</span><span style="color:var(--red-l)">-${R(s.feeValue)}</span></div>`:''}
       <div class="calc-row total"><span>💰 Total recebido:</span><span style="color:var(--green-l)">${R(s.netTotal)}</span></div>
-      <div class="calc-row" style="margin-top:4px"><span>📈 Lucro estimado:</span><span style="color:var(--blue-l);font-weight:600">${R(s.profit)}</span></div>
+      <div class="calc-row" style="margin-top:4px"><span>📈 Lucro líquido (após taxa):</span><span style="color:${(s.profit-s.feeValue)<0?'var(--red-l)':'var(--blue-l)'};font-weight:600">${R(s.profit-s.feeValue)}</span></div>
     </div>
     <div class="form-actions" style="margin-top:16px">
       <button class="btn btn-ghost" onclick="_closeModal()">Fechar</button>
@@ -1070,10 +1113,12 @@ function openSaleModal(){
   saleItems=[];
   selectedPayMethod='dinheiro';
   const today=new Date().toISOString().split('T')[0];
+  const nowHM=new Date().toTimeString().slice(0,5);
   openModal(`
     <div class="modal-title">🛒 Nova Venda</div>
-    <div class="form-row">
+    <div class="form-row-3">
       <div class="form-group"><label>Data</label><input type="date" id="s-date" value="${today}"/></div>
+      <div class="form-group"><label>Hora</label><input type="time" id="s-time" value="${nowHM}"/></div>
       <div class="form-group"><label>Cliente (opcional)</label>
         <select id="s-client">
           <option value="">Cliente avulso</option>
@@ -1090,7 +1135,14 @@ function openSaleModal(){
         <div class="sale-item-add">
           <select id="add-product" style="flex:1">
             <option value="">Selecionar produto/serviço...</option>
-            ${state.products.map(p=>`<option value="${p.id}" data-price="${p.price}" data-cost="${p.cost}" data-stock="${p.stock}" data-type="${p.type}">${p.name} — ${R(p.price)}${p.type==='product'?` (estoque: ${p.stock??'∞'})`:''}</option>`).join('')}
+            ${state.products.flatMap(p => {
+              if (p.variations && p.variations.length > 0) {
+                return p.variations.map(v => 
+                  `<option value="${p.id}" data-fullname="${p.name} - ${v.name}" data-price="${v.price}" data-cost="${p.cost}" data-stock="${p.stock}" data-type="${p.type}">${p.name} - ${v.name} — ${R(v.price)}${p.type==='product'?` (estoque: ${p.stock??'∞'})`:''}</option>`
+                );
+              }
+              return `<option value="${p.id}" data-fullname="${p.name}" data-price="${p.price}" data-cost="${p.cost}" data-stock="${p.stock}" data-type="${p.type}">${p.name} — ${R(p.price)}${p.type==='product'?` (estoque: ${p.stock??'∞'})`:''}</option>`;
+            }).join('')}
           </select>
           <button class="btn btn-primary btn-sm" onclick="addSaleItem()">+ Adicionar</button>
         </div>
@@ -1159,6 +1211,7 @@ function addSaleItem(){
   const opt=sel.selectedOptions[0];
   if(!opt.value)return toast('Selecione um produto','error');
   const pid=opt.value;
+  const fullname=opt.dataset.fullname;
   const price=parseFloat(opt.dataset.price);
   const cost=parseFloat(opt.dataset.cost);
   const stock=opt.dataset.stock==='null'?null:parseInt(opt.dataset.stock);
@@ -1167,9 +1220,9 @@ function addSaleItem(){
     const alreadyInCart=saleItems.filter(i=>i.productId===pid).reduce((a,i)=>a+i.qty,0);
     if(alreadyInCart>=stock)return toast(`Estoque insuficiente (${stock} un disponíveis)`,'error');
   }
-  const existing=saleItems.find(i=>i.productId===pid);
+  const existing=saleItems.find(i=>i.productId===pid && i.name===fullname);
   if(existing){existing.qty++;existing.subtotal=+(existing.qty*existing.unitPrice).toFixed(2);}
-  else saleItems.push({productId:pid,name:sel.selectedOptions[0].text.split(' — ')[0],qty:1,unitPrice:price,cost,subtotal:price});
+  else saleItems.push({productId:pid,name:fullname,qty:1,unitPrice:price,cost,subtotal:price});
   sel.value='';
   renderSaleRows();
   updateSaleSummary();
@@ -1288,6 +1341,7 @@ function saveSale(){
   const client=clientId?state.clients.find(c=>c.id===clientId):null;
   const status=document.getElementById('s-status').value;
   const date=document.getElementById('s-date').value;
+  const time=document.getElementById('s-time')?.value || '';
 
   const payload={
     client_id:clientId,
@@ -1295,7 +1349,7 @@ function saveSale(){
     items:saleItems.map(i=>({
       product_id:i.productId, product_name:i.name, qty:i.qty, unit_price:i.unitPrice, cost:i.cost,
     })),
-    pay_method:selectedPayMethod, fee_pct:feePct, status, sale_date:date,
+    pay_method:selectedPayMethod, fee_pct:feePct, status, sale_date:date, sale_time:time,
   };
   saveSaleAsync(payload, btn);
 }
@@ -1551,14 +1605,14 @@ function reportProdutos(){
     <div class="card">
       <div class="section-title" style="margin-bottom:14px">📦 Análise de Produtos & Serviços</div>
       <table>
-        <thead><tr><th>Nome</th><th>Tipo</th><th>Custo</th><th>Preço</th><th>Lucro unit.</th><th>Estoque</th><th>Qtd vendida</th></tr></thead>
+        <thead><tr><th>Nome</th><th>Tipo</th><th>Custo base</th><th>Preço base</th><th>Variações</th><th>Estoque</th><th>Qtd vendida</th></tr></thead>
         <tbody>
           ${state.products.map(p=>`<tr>
             <td><strong>${p.name}</strong></td>
             <td><span class="badge ${p.type==='service'?'badge-blue':'badge-green'}">${p.type==='service'?'Serviço':'Produto'}</span></td>
             <td>${R(p.cost)}</td>
             <td style="font-weight:700">${R(p.price)}</td>
-            <td style="color:var(--green-l);font-weight:600">${R(p.price-p.cost)}</td>
+            <td>${p.variations && p.variations.length > 0 ? `<span class="badge badge-purple">${p.variations.length} sabor(es)</span>` : 'Nenhuma'}</td>
             <td>${p.type==='product'?((p.stock??0)<=5?`<span class="stock-low">⚠️ ${p.stock??0}`:`<span class="stock-ok">${p.stock??0}`)+'</span>':'—'}</td>
             <td style="font-weight:600">${salesCount[p.id]||0} un</td>
           </tr>`).join('')}
@@ -1682,10 +1736,11 @@ function openClientDetailModal(clientId){
       <div style="font-weight:700;margin-bottom:10px">📋 Histórico de compras</div>
       <div style="max-height:260px;overflow-y:auto">
         <table style="min-width:unset">
-          <thead><tr><th>Data</th><th>Itens</th><th>Pagamento</th><th>Total</th></tr></thead>
+          <thead><tr><th>Data</th><th>Hora</th><th>Itens</th><th>Pagamento</th><th>Total</th></tr></thead>
           <tbody>
             ${[...clientSales].reverse().map(s=>`<tr>
               <td style="white-space:nowrap">${fmt(s.date)}</td>
+              <td style="color:var(--muted)">${s.time||'—'}</td>
               <td style="font-size:12px">${s.items.map(i=>i.qty+'x '+i.name).join(', ')}</td>
               <td style="font-size:12px">${payIcon(s.payMethod)} ${payLabel(s.payMethod)}</td>
               <td style="font-weight:700;color:var(--green-l);white-space:nowrap">${R(s.netTotal)}</td>
@@ -1701,8 +1756,8 @@ function openClientDetailModal(clientId){
 }
 function reportMEI(){
   const pct=(state.yearRevenue/MEI_LIMIT*100);
-  const months=new Date().getMonth()+1;
-  const projectedAnnual=(state.yearRevenue/months)*12;
+  const meses=new Date().getMonth()+1;
+  const projectedAnnual=(state.yearRevenue/meses)*12;
   return `
     <div class="card" style="margin-bottom:16px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
@@ -1753,7 +1808,6 @@ function reportPDF(){
   const dataEmissao = now.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'});
   const horaEmissao = now.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
 
-  // Tipos de relatório disponíveis
   const tipos = [
     {id:'mensal',    label:'📊 Relatório Mensal Completo',      desc:'Receitas, despesas, lucro, vendas e fluxo de caixa do mês atual'},
     {id:'vendas',    label:'🛒 Relatório de Vendas',            desc:'Detalhamento de todas as vendas com itens, clientes e formas de pagamento'},
@@ -1776,7 +1830,7 @@ function reportPDF(){
         ${tipos.map(t=>`
           <label style="display:flex;align-items:flex-start;gap:12px;padding:12px 16px;border:1.5px solid var(--border);border-radius:8px;margin-bottom:8px;cursor:pointer;transition:.15s"
             onmouseover="this.style.borderColor='var(--blue-l)'" onmouseout="this.style.borderColor='var(--border)'">
-            <input type="radio" name="report-type" value="${t.id}" ${t.id==='mensal'?'checked':''} style="margin-top:3px;flex-shrink:0"/>
+            <input type="radio" name="report-type" value="${t.id}" ${t.id==='mensal'?'checked':''} onchange="toggleClientReportSelector()" style="margin-top:3px;flex-shrink:0"/>
             <div>
               <div style="font-weight:600;font-size:14px">${t.label}</div>
               <div style="font-size:12px;color:var(--muted);margin-top:2px">${t.desc}</div>
@@ -1784,7 +1838,28 @@ function reportPDF(){
           </label>`).join('')}
       </div>
 
-      <div class="form-row">
+      <div class="form-group" id="report-client-box" style="display:none;background:var(--blue-x);padding:14px 16px;border-radius:8px">
+        <label>👤 Cliente específico (opcional)</label>
+        <select id="report-client-filter">
+          <option value="">Todos os clientes (relatório geral de cadastro)</option>
+          ${state.clients.map(c=>`<option value="${c.id}">${c.name}</option>`).join('')}
+        </select>
+        <div style="font-size:12px;color:var(--muted);margin-top:6px">Selecionando um cliente, o relatório traz tudo que ele já comprou (dentro do período escolhido abaixo), o ticket médio e o dia da semana em que ele mais compra.</div>
+      </div>
+
+      <div class="form-group">
+        <label style="margin-bottom:10px">Período do relatório</label>
+        <div class="pay-methods" id="period-quick-pills">
+          <div class="pay-pill" id="pill-period-day" onclick="setReportPeriod('day')">📅 1 dia</div>
+          <div class="pay-pill" id="pill-period-week" onclick="setReportPeriod('week')">🗓️ 1 semana</div>
+          <div class="pay-pill active" id="pill-period-month" onclick="setReportPeriod('month')">📆 1 mês</div>
+          <div class="pay-pill" id="pill-period-year" onclick="setReportPeriod('year')">🏛️ 1 ano</div>
+          <div class="pay-pill" id="pill-period-total" onclick="setReportPeriod('total')">♾️ Total</div>
+          <div class="pay-pill" id="pill-period-single" onclick="setReportPeriod('single')">🗓️ Dia avulso</div>
+        </div>
+      </div>
+
+      <div class="form-row" id="period-range-fields">
         <div class="form-group">
           <label>Período — De</label>
           <input type="date" id="pdf-from" value="${ano}-${mesNum}-01"/>
@@ -1793,6 +1868,10 @@ function reportPDF(){
           <label>Período — Até</label>
           <input type="date" id="pdf-to" value="${new Date(ano,now.getMonth()+1,0).toISOString().slice(0,10)}"/>
         </div>
+      </div>
+      <div class="form-group" id="period-single-field" style="display:none">
+        <label>Escolha o dia</label>
+        <input type="date" id="pdf-single-day" value="${now.toISOString().slice(0,10)}"/>
       </div>
 
       <div class="form-group">
@@ -1819,10 +1898,59 @@ function reportPDF(){
     </div>`;
 }
 
+function toggleClientReportSelector(){
+  const tipo = document.querySelector('input[name="report-type"]:checked')?.value;
+  const box = document.getElementById('report-client-box');
+  if(box) box.style.display = tipo==='clientes' ? 'block' : 'none';
+}
+
+function setReportPeriod(mode){
+  document.querySelectorAll('#period-quick-pills .pay-pill').forEach(p=>p.classList.remove('active'));
+  document.getElementById('pill-period-'+mode)?.classList.add('active');
+
+  const rangeFields  = document.getElementById('period-range-fields');
+  const singleField  = document.getElementById('period-single-field');
+  if(mode==='single'){
+    rangeFields.style.display='none';
+    singleField.style.display='block';
+    return;
+  }
+  rangeFields.style.display='';
+  singleField.style.display='none';
+
+  const iso = d => d.toISOString().slice(0,10);
+  const now = new Date();
+  let from=now, to=now, useEmpty=false;
+  if(mode==='day'){
+    from = now; to = now;
+  } else if(mode==='week'){
+    from = new Date(now); from.setDate(from.getDate()-6); to = now;
+  } else if(mode==='month'){
+    from = new Date(now.getFullYear(), now.getMonth(), 1);
+    to   = new Date(now.getFullYear(), now.getMonth()+1, 0);
+  } else if(mode==='year'){
+    from = new Date(now.getFullYear(), 0, 1);
+    to   = new Date(now.getFullYear(), 11, 31);
+  } else if(mode==='total'){
+    useEmpty = true;
+  }
+  document.getElementById('pdf-from').value = useEmpty ? '' : iso(from);
+  document.getElementById('pdf-to').value   = useEmpty ? '' : iso(to);
+}
+
 function gerarPDF(){
   const tipo = document.querySelector('input[name="report-type"]:checked')?.value || 'mensal';
-  const from = document.getElementById('pdf-from')?.value;
-  const to   = document.getElementById('pdf-to')?.value;
+  const clienteFiltroId = tipo==='clientes' ? (document.getElementById('report-client-filter')?.value || '') : '';
+  const clienteFiltro = clienteFiltroId ? state.clients.find(c=>c.id===clienteFiltroId) : null;
+  const singleMode = document.getElementById('period-single-field')?.style.display !== 'none';
+  let from, to;
+  if(singleMode){
+    const dia = document.getElementById('pdf-single-day')?.value;
+    from = dia; to = dia;
+  } else {
+    from = document.getElementById('pdf-from')?.value;
+    to   = document.getElementById('pdf-to')?.value;
+  }
   const autor= document.getElementById('pdf-autor')?.value || state.user?.name || '—';
   const cnpj = document.getElementById('pdf-cnpj')?.value || state.user?.cpf_cnpj || '—';
   const obs  = document.getElementById('pdf-obs')?.value || '';
@@ -1830,13 +1958,15 @@ function gerarPDF(){
   const dataFrom = from ? new Date(from+'T00:00:00') : null;
   const dataTo   = to   ? new Date(to+'T23:59:59')   : null;
   const fmtPeriodo = (from && to)
-    ? `${new Date(from+'T00:00:00').toLocaleDateString('pt-BR')} a ${new Date(to+'T00:00:00').toLocaleDateString('pt-BR')}`
+    ? (from===to
+        ? new Date(from+'T00:00:00').toLocaleDateString('pt-BR')
+        : `${new Date(from+'T00:00:00').toLocaleDateString('pt-BR')} a ${new Date(to+'T00:00:00').toLocaleDateString('pt-BR')}`)
     : 'Período completo';
 
   const now = new Date();
   const dataEmissao = now.toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'});
+  const mesAtualNome = now.toLocaleDateString('pt-BR',{month:'long',year:'numeric'});
 
-  // Filtra vendas pelo período
   const vendasPeriodo = state.sales.filter(s=>{
     if(!from&&!to)return true;
     const d=new Date(s.date+'T00:00:00');
@@ -1844,7 +1974,6 @@ function gerarPDF(){
   });
   const vendasPagas = vendasPeriodo.filter(s=>s.status==='paid');
 
-  // Filtra cashflow pelo período
   const cfPeriodo = state.cashflow.filter(c=>{
     if(!from&&!to)return true;
     const d=new Date(c.date+'T00:00:00');
@@ -1860,16 +1989,25 @@ function gerarPDF(){
   const pctMEI = (state.yearRevenue/MEI_LIMIT*100).toFixed(1);
   const meses  = new Date().getMonth()+1;
 
+  const mesAtualKey = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  const paidSalesMes = state.sales.filter(s=>s.status==='paid'&&s.date&&s.date.startsWith(mesAtualKey));
+  const receitaMes   = paidSalesMes.reduce((a,s)=>a+s.netTotal,0);
+  const lucroMes     = paidSalesMes.reduce((a,s)=>a+s.profit,0);
+  const despesasMes  = state.cashflow.filter(c=>c.type==='out'&&c.date&&c.date.startsWith(mesAtualKey)).reduce((a,c)=>a+c.value,0);
+  const taxasMes     = paidSalesMes.reduce((a,s)=>a+s.feeValue,0);
+  const margemMes    = receitaMes>0 ? ((lucroMes-taxasMes)/receitaMes*100).toFixed(1) : '0.0';
+  const payBreakdownMes = {};
+  paidSalesMes.forEach(s=>{payBreakdownMes[s.payMethod]=(payBreakdownMes[s.payMethod]||0)+s.netTotal;});
+
   const nomes = {
     mensal: 'RELATÓRIO MENSAL DE GESTÃO FINANCEIRA',
     vendas: 'RELATÓRIO DE VENDAS',
     estoque:'RELATÓRIO DE POSIÇÃO DE ESTOQUE',
-    clientes:'RELATÓRIO CADASTRAL DE CLIENTES',
+    clientes: clienteFiltro ? `RELATÓRIO DE CLIENTE — ${clienteFiltro.name.toUpperCase()}` : 'RELATÓRIO CADASTRAL DE CLIENTES',
     mei:    'RELATÓRIO DE ENQUADRAMENTO MEI',
     fluxo:  'RELATÓRIO DE FLUXO DE CAIXA',
   };
 
-  // ── Conteúdo por tipo ──
   let seccoes = '';
 
   if(tipo==='mensal'||tipo==='vendas'){
@@ -1891,10 +2029,11 @@ function gerarPDF(){
     seccoes += `
       <h2 class="abnt-section">2 DETALHAMENTO DAS VENDAS</h2>
       <table>
-        <tr><th>Data</th><th>Cliente</th><th>Itens</th><th>Pagamento</th><th>Total Líq. (R$)</th><th>Status</th></tr>
+        <tr><th>Data</th><th>Hora</th><th>Cliente</th><th>Itens</th><th>Pagamento</th><th>Total Líq. (R$)</th><th>Status</th></tr>
         ${vendasPeriodo.map(s=>`
           <tr>
             <td>${fmt(s.date)}</td>
+            <td>${s.time||'—'}</td>
             <td>${s.clientName||'Cliente avulso'}</td>
             <td>${s.items.map(i=>`${i.qty}x ${i.name}`).join(', ')}</td>
             <td>${payLabel(s.payMethod)}</td>
@@ -1940,18 +2079,73 @@ function gerarPDF(){
   }
 
   if(tipo==='clientes'){
-    seccoes += `
-      <h2 class="abnt-first-section">1 CADASTRO DE CLIENTES</h2>
-      <table>
-        <tr><th>Nome</th><th>CPF</th><th>Telefone</th><th>E-mail</th><th>Cidade</th><th>Total Compras (R$)</th></tr>
-        ${state.clients.map(c=>{
-          const totalC=state.sales.filter(s=>s.clientId===c.id&&s.status==='paid').reduce((a,s)=>a+s.netTotal,0);
-          return`<tr>
-            <td>${c.name}</td><td>${c.cpf||'—'}</td><td>${c.phone||'—'}</td>
-            <td>${c.email||'—'}</td><td>${c.city||'—'}</td><td>${R(totalC)}</td>
-          </tr>`;
-        }).join('')}
-      </table>`;
+    if(clienteFiltro){
+      const diasSemana=['Domingo','Segunda-feira','Terça-feira','Quarta-feira','Quinta-feira','Sexta-feira','Sábado'];
+      const comprasCliente = state.sales
+        .filter(s=>s.clientId===clienteFiltro.id && s.status==='paid')
+        .filter(s=>{
+          if(!from&&!to)return true;
+          const d=new Date(s.date+'T00:00:00');
+          return(!dataFrom||d>=dataFrom)&&(!dataTo||d<=dataTo);
+        })
+        .sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+
+      const totalGastoCliente = comprasCliente.reduce((a,s)=>a+s.netTotal,0);
+      const ticketMedioCliente = comprasCliente.length ? totalGastoCliente/comprasCliente.length : 0;
+
+      const freqDias = {};
+      comprasCliente.forEach(s=>{
+        const dia = diasSemana[new Date(s.date+'T00:00:00').getDay()];
+        freqDias[dia]=(freqDias[dia]||0)+1;
+      });
+      let diaPreferido='—', maxFreq=0;
+      Object.entries(freqDias).forEach(([dia,qtd])=>{ if(qtd>maxFreq){maxFreq=qtd;diaPreferido=dia;} });
+
+      seccoes += `
+        <h2 class="abnt-first-section">1 DADOS DO CLIENTE</h2>
+        <table>
+          <tr><th>Campo</th><th>Valor</th></tr>
+          <tr><td>Nome</td><td>${clienteFiltro.name}</td></tr>
+          <tr><td>CPF</td><td>${clienteFiltro.cpf||'—'}</td></tr>
+          <tr><td>Telefone</td><td>${clienteFiltro.phone||'—'}</td></tr>
+          <tr><td>E-mail</td><td>${clienteFiltro.email||'—'}</td></tr>
+          <tr><td>Cidade</td><td>${clienteFiltro.city||'—'}</td></tr>
+        </table>
+        <h2 class="abnt-section">2 RESUMO DE COMPRAS (${fmtPeriodo})</h2>
+        <table>
+          <tr><th>Indicador</th><th>Valor</th></tr>
+          <tr><td>Total gasto no período</td><td>${R(totalGastoCliente)}</td></tr>
+          <tr><td>Quantidade de compras pagas</td><td>${comprasCliente.length}</td></tr>
+          <tr><td>Ticket médio</td><td>${R(ticketMedioCliente)}</td></tr>
+          <tr><td>Dia da semana em que mais compra</td><td>${diaPreferido}${maxFreq?` (${maxFreq}x)`:''}</td></tr>
+        </table>
+        <h2 class="abnt-section">3 HISTÓRICO DE COMPRAS</h2>
+        <table>
+          <tr><th>Data</th><th>Dia da Semana</th><th>Hora</th><th>Itens</th><th>Pagamento</th><th>Total Líq. (R$)</th></tr>
+          ${comprasCliente.map(s=>`
+            <tr>
+              <td>${fmt(s.date)}</td>
+              <td>${diasSemana[new Date(s.date+'T00:00:00').getDay()]}</td>
+              <td>${s.time||'—'}</td>
+              <td>${s.items.map(i=>`${i.qty}x ${i.name}`).join(', ')}</td>
+              <td>${payLabel(s.payMethod)}</td>
+              <td>${R(s.netTotal)}</td>
+            </tr>`).join('') || '<tr><td colspan="6">Nenhuma compra paga encontrada no período selecionado</td></tr>'}
+        </table>`;
+    } else {
+      seccoes += `
+        <h2 class="abnt-first-section">1 CADASTRO DE CLIENTES</h2>
+        <table>
+          <tr><th>Nome</th><th>CPF</th><th>Telefone</th><th>E-mail</th><th>Cidade</th><th>Total Compras (R$)</th></tr>
+          ${state.clients.map(c=>{
+            const totalC=state.sales.filter(s=>s.clientId===c.id&&s.status==='paid').reduce((a,s)=>a+s.netTotal,0);
+            return`<tr>
+              <td>${c.name}</td><td>${c.cpf||'—'}</td><td>${c.phone||'—'}</td>
+              <td>${c.email||'—'}</td><td>${c.city||'—'}</td><td>${R(totalC)}</td>
+            </tr>`;
+          }).join('')}
+        </table>`;
+    }
   }
 
   if(tipo==='mei'){
@@ -1980,7 +2174,6 @@ function gerarPDF(){
       </table>`;
   }
 
-  // ── Monta o HTML completo do relatório ABNT ──
   const html = `
     <div class="abnt-cover">
       <p><strong>${autor}</strong></p>
@@ -1994,11 +2187,30 @@ function gerarPDF(){
     </div>
     <div class="abnt-section">
       <h2>SUMÁRIO</h2>
+      <p>Painel Geral — Situação Atual</p>
       <p>1. Resumo Financeiro do Período</p>
       <p>2. Detalhamento das Vendas</p>
       <p>3. Fluxo de Caixa</p>
       <p>4. Posição de Estoque</p>
-      ${obs?`<h2 class="abnt-section">OBSERVAÇÕES</h2><p>${obs}</p>`:''}
+      ${obs?`<h3>OBSERVAÇÕES</h3><p>${obs}</p>`:''}
+      <h2 style="margin-top:24pt">PAINEL GERAL — SITUAÇÃO ATUAL (${mesAtualNome.toUpperCase()})</h2>
+      <p>Indicadores extraídos diretamente da Dashboard do sistema, referentes ao mês corrente.</p>
+      <table>
+        <tr><th>Indicador</th><th>Valor</th></tr>
+        <tr><td>Receita líquida (mês)</td><td>${R(receitaMes)}</td></tr>
+        <tr><td>Lucro líquido, após taxas (mês)</td><td>${R(lucroMes-taxasMes)} (margem de ${margemMes}%)</td></tr>
+        <tr><td>Despesas (mês)</td><td>${R(despesasMes)}</td></tr>
+        <tr><td>Taxas de maquininha/gateway (mês)</td><td>${R(taxasMes)}</td></tr>
+        <tr><td>Vendas pagas no mês</td><td>${paidSalesMes.length}</td></tr>
+        <tr><td>Faturamento acumulado no ano (MEI)</td><td>${R(state.yearRevenue)}</td></tr>
+        <tr><td>Limite anual MEI</td><td>${R(MEI_LIMIT)}</td></tr>
+        <tr><td>Percentual do limite utilizado</td><td>${pctMEI}%</td></tr>
+      </table>
+      <h3>Vendas por forma de pagamento (mês)</h3>
+      <table>
+        <tr><th>Forma de Pagamento</th><th>Valor (R$)</th></tr>
+        ${Object.entries(payBreakdownMes).map(([m,v])=>`<tr><td>${payLabel(m)}</td><td>${R(v)}</td></tr>`).join('')||'<tr><td colspan="2">Sem vendas registradas neste mês</td></tr>'}
+      </table>
     </div>
     ${seccoes}
     <div class="abnt-section">
@@ -2007,7 +2219,6 @@ function gerarPDF(){
       <p style="font-size:10pt;text-align:center">Documento gerado eletronicamente — não requer assinatura.</p>
     </div>`;
 
-  // Injeta no div oculto e imprime
   const printEl = document.getElementById('abnt-print');
   printEl.innerHTML = html;
   setTimeout(()=>{ window.print(); },200);
@@ -2100,10 +2311,53 @@ async function changePasswordAsync(current_password,new_password){
 }
 
 // ══════════════════════════════════════
+// ADMIN — DADOS DE DEMONSTRAÇÃO (só aparece/funciona para a conta demo)
+// ══════════════════════════════════════
+function renderAdminSeed(el){
+  const isDemo = (state.user?.email||'').toLowerCase() === 'demo@meifacil.com.br';
+  if(!isDemo){
+    el.innerHTML = `<div class="card" style="padding:40px;text-align:center;color:var(--muted)">🔒 Esta área é exclusiva da conta demo.</div>`;
+    return;
+  }
+  el.innerHTML = `
+    <div class="card" style="max-width:560px;padding:24px">
+      <h3 style="margin-bottom:6px">🛠️ Dados de demonstração</h3>
+      <p style="font-size:13px;color:var(--muted);margin-bottom:20px">Gera clientes, vendas e lançamentos de caixa fictícios (nomes, CPFs e telefones inventados) só nesta conta demo, para deixar a apresentação com dados de exemplo realistas. Lembre-se de avisar que são dados de demonstração.</p>
+
+      <div class="form-row-3">
+        <div class="form-group"><label>Clientes</label><input type="number" id="seed-clients" value="12" min="1" max="30"/></div>
+        <div class="form-group"><label>Dias de histórico</label><input type="number" id="seed-days" value="45" min="1" max="180"/></div>
+        <div class="form-group"><label>Vendas / dia (~)</label><input type="number" id="seed-per-day" value="3" min="1" max="10"/></div>
+      </div>
+
+      <button class="btn btn-primary" style="width:100%;padding:12px;margin-top:8px" onclick="adminSeedGenerate()">🌱 Gerar dados de demonstração</button>
+      <button class="btn btn-ghost" style="width:100%;padding:12px;margin-top:10px;border:1.5px solid var(--red-l);color:var(--red-l)" onclick="adminSeedReset()">🧹 Limpar todos os dados desta conta</button>
+
+      <div id="seed-result" style="margin-top:16px;font-size:13px;color:var(--muted)"></div>
+    </div>`;
+}
+async function adminSeedGenerate(){
+  const clients   = document.getElementById('seed-clients').value;
+  const days      = document.getElementById('seed-days').value;
+  const salesPerDay = document.getElementById('seed-per-day').value;
+  const box = document.getElementById('seed-result');
+  box.textContent = '⏳ Gerando dados, isso pode levar alguns segundos...';
+  const data = await apiCall('/api/admin/seed-demo','POST',{clients:+clients,days:+days,salesPerDay:+salesPerDay});
+  if(!data){ box.textContent=''; return; }
+  box.innerHTML = `✅ ${data.clients_created} clientes e ${data.sales_created} vendas criados.`;
+  toast('Dados de demonstração gerados!','success');
+}
+async function adminSeedReset(){
+  if(!confirm('Isso vai apagar TODOS os clientes, vendas e lançamentos desta conta demo. Confirmar?'))return;
+  const box = document.getElementById('seed-result');
+  const data = await apiCall('/api/admin/reset-demo','POST',{});
+  if(!data)return;
+  box.textContent = '✅ Dados da conta demo limpos.';
+  toast('Conta demo resetada!','success');
+}
+
+// ══════════════════════════════════════
 // INIT
-// ══════════════════════════════════════
-// ══════════════════════════════════════
-// DARK MODE
 // ══════════════════════════════════════
 function applyTheme(dark){
   document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
