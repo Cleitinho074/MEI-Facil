@@ -68,6 +68,7 @@ const initDB = async () => {
         margin_pct DECIMAL(10,2) DEFAULT 100,
         price DECIMAL(10,2) NOT NULL,
         stock INT,
+        variations JSONB DEFAULT '[]'::jsonb,
         active BOOLEAN DEFAULT true,
         created_at TIMESTAMP DEFAULT NOW()
       );
@@ -129,6 +130,7 @@ const initDB = async () => {
     // Migrações seguras para bancos já existentes
     await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS store_name VARCHAR(150);`);
     await client.query(`ALTER TABLE sales ADD COLUMN IF NOT EXISTS sale_time VARCHAR(5);`);
+    await client.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS variations JSONB DEFAULT '[]'::jsonb;`);
     console.log("✅ Banco de dados inicializado e pronto para uso!");
   } catch (err) {
     console.error("❌ Erro ao criar as tabelas:", err);
@@ -246,7 +248,7 @@ app.put('/api/auth/profile', auth, async (req, res) => {
 });
 
 // ══════════════════════════════════════════════════════════════
-// CLIENTS, PRODUCTS, SALES, CASHFLOW (Restante das Rotas Iguais)
+// CLIENTS, PRODUCTS, SALES, CASHFLOW
 // ══════════════════════════════════════════════════════════════
 app.get('/api/clients', auth, async (req, res) => {
   const { rows } = await Q('SELECT * FROM clients WHERE user_id=$1 ORDER BY name', [req.userId]);
@@ -272,15 +274,15 @@ app.get('/api/products', auth, async (req, res) => {
   res.json(rows);
 });
 app.post('/api/products', auth, async (req, res) => {
-  const { name, type='service', unit='un', cost=0, margin_pct=100, price, stock } = req.body;
+  const { name, type='service', unit='un', cost=0, margin_pct=100, price, stock, variations=[] } = req.body;
   const stockVal = type === 'product' ? (stock ?? 0) : null;
-  const { rows } = await Q('INSERT INTO products(user_id,name,type,unit,cost,margin_pct,price,stock) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *', [req.userId, name, type, unit, cost, margin_pct, price, stockVal]);
+  const { rows } = await Q('INSERT INTO products(user_id,name,type,unit,cost,margin_pct,price,stock,variations) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *', [req.userId, name, type, unit, cost, margin_pct, price, stockVal, JSON.stringify(variations)]);
   res.status(201).json(rows[0]);
 });
 app.put('/api/products/:id', auth, async (req, res) => {
-  const { name, type, unit, cost, margin_pct, price, stock } = req.body;
+  const { name, type, unit, cost, margin_pct, price, stock, variations=[] } = req.body;
   const stockVal = type === 'product' ? (stock ?? 0) : null;
-  const { rows } = await Q('UPDATE products SET name=$1,type=$2,unit=$3,cost=$4,margin_pct=$5,price=$6,stock=$7 WHERE id=$8 AND user_id=$9 RETURNING *', [name, type, unit, cost, margin_pct, price, stockVal, req.params.id, req.userId]);
+  const { rows } = await Q('UPDATE products SET name=$1,type=$2,unit=$3,cost=$4,margin_pct=$5,price=$6,stock=$7,variations=$8 WHERE id=$9 AND user_id=$10 RETURNING *', [name, type, unit, cost, margin_pct, price, stockVal, JSON.stringify(variations), req.params.id, req.userId]);
   rows.length ? res.json(rows[0]) : res.status(404).json({ error: 'Não encontrado' });
 });
 app.delete('/api/products/:id', auth, async (req, res) => {
