@@ -242,12 +242,13 @@ input[type="checkbox"]{border-radius:4px}
   const savedTheme = localStorage.getItem('mei_theme') || 'light';
   document.documentElement.setAttribute('data-theme', savedTheme);
 
-  // Helper Global para adicionar Variações/Sabores
-  function getVariationRow(name = '', price = '') {
+  // Helper Global para adicionar Variações/Variações
+  function getVariationRow(name = '', price = '', cost = '') {
     return `
-      <div class="variation-row" style="display:flex;gap:8px;align-items:center;margin-top:4px;">
-        <input type="text" class="var-name" placeholder="Ex: Carne, Queijo..." value="${name}" style="flex:2">
-        <input type="number" step="0.01" class="var-price" placeholder="Preço (R$)" value="${price}" style="flex:1">
+      <div class="variation-row" style="display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:8px;align-items:center;margin-top:6px;">
+        <input type="text" class="var-name" placeholder="Ex: Carne, Queijo..." value="${name}" style="min-width:0">
+        <input type="number" step="0.01" class="var-cost" placeholder="Custo (R$)" value="${cost}" style="min-width:0">
+        <input type="number" step="0.01" class="var-price" placeholder="Preço (R$)" value="${price}" style="min-width:0">
         <button type="button" class="remove-item-btn" onclick="this.parentElement.remove()">×</button>
       </div>`;
   }
@@ -873,7 +874,7 @@ function renderProducts(el){
             <td>${R(p.cost)}</td>
             <td><span class="badge badge-amber">${p.marginPct}%</span></td>
             <td style="font-weight:700;color:var(--green-l)">${R(p.price)}</td>
-            <td>${p.variations && p.variations.length > 0 ? `<span class="badge badge-purple">${p.variations.length} sabor(es)</span>` : '<span style="color:var(--muted);font-size:12px">Nenhuma</span>'}</td>
+            <td>${p.variations && p.variations.length > 0 ? `<span class="badge badge-purple">${p.variations.length} variação(ões)</span>` : '<span style="color:var(--muted);font-size:12px">Nenhuma</span>'}</td>
             <td>${p.type==='service'?'<span style="color:var(--muted);font-size:12px">N/A</span>':(p.stock??0)<=5?`<span class="stock-low">⚠️ ${p.stock??0} un</span>`:`<span class="stock-ok">${p.stock??0} un</span>`}</td>
             <td>
               <button class="btn btn-ghost btn-sm" onclick="openProductModal('${p.id}')">✏️</button>
@@ -911,15 +912,21 @@ function openProductModal(id){
     <div class="form-group" style="margin-top:12px"><label>Preço Base de Venda (R$)</label><input id="p-price" type="number" min="0" step="0.01" value="${p.price||0}"/></div>
     
     <div class="form-group" style="margin-top:12px; padding:12px; background:var(--bg); border-radius:8px;">
-      <label>Sabores / Variações (Opcional)</label>
-      <div id="p-variations-container" style="display:flex;flex-direction:column;gap:8px;margin-bottom:8px;">
-        ${(p.variations || []).map(v => getVariationRow(v.name, v.price)).join('')}
+      <label>Variações / Variações (Opcional)</label>
+      <div style="display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:8px;margin-bottom:4px;padding:0 2px">
+        <span style="font-size:11px;color:var(--muted);font-weight:600">NOME DA VARIAÇÃO</span>
+        <span style="font-size:11px;color:var(--muted);font-weight:600">CUSTO (R$)</span>
+        <span style="font-size:11px;color:var(--muted);font-weight:600">PREÇO (R$)</span>
+        <span></span>
       </div>
-      <button type="button" class="btn btn-ghost btn-sm" onclick="addVariationRow()">+ Adicionar Sabor/Variação</button>
+      <div id="p-variations-container" style="display:flex;flex-direction:column;gap:4px;margin-bottom:8px;">
+        ${(p.variations || []).map(v => getVariationRow(v.name, v.price, v.cost||'')).join('')}
+      </div>
+      <button type="button" class="btn btn-ghost btn-sm" onclick="addVariationRow()">+ Adicionar Variação</button>
     </div>
 
     <div id="stock-field" style="display:${p.type==='product'?'block':'none'}">
-      <div class="form-group"><label>Estoque (compartilhado entre sabores)</label><input id="p-stock" type="number" min="0" value="${p.stock||0}"/></div>
+      <div class="form-group"><label>Estoque (compartilhado entre variações)</label><input id="p-stock" type="number" min="0" value="${p.stock||0}"/></div>
     </div>
     <div class="form-actions">
       <button class="btn btn-ghost" onclick="_closeModal()">Cancelar</button>
@@ -949,9 +956,10 @@ function saveProduct(id){
   const varRows = document.querySelectorAll('.variation-row');
   const variations = [];
   varRows.forEach(row => {
-    const vName = row.querySelector('.var-name').value.trim();
+    const vName  = row.querySelector('.var-name').value.trim();
+    const vCost  = parseFloat(row.querySelector('.var-cost')?.value) || 0;
     const vPrice = parseFloat(row.querySelector('.var-price').value);
-    if(vName && !isNaN(vPrice)) variations.push({ name: vName, price: vPrice });
+    if(vName && !isNaN(vPrice)) variations.push({ name: vName, cost: vCost, price: vPrice });
   });
 
   const obj={
@@ -1148,7 +1156,7 @@ function openSaleModal(){
               ).join('')}
             </select>
             <select id="add-variation" style="flex:1;display:none" onchange="onVariationSelectChange()">
-              <option value="">Escolha o sabor...</option>
+              <option value="">Escolha a variação...</option>
             </select>
           </div>
           <button class="btn btn-primary btn-sm" style="width:100%" onclick="addSaleItem()">+ Adicionar item</button>
@@ -1224,10 +1232,10 @@ function onProductSelectChange(){
   try{ variations = JSON.parse(opt.dataset.variations||'[]'); }catch(e){}
 
   if(variations.length > 0){
-    // Monta as opções de sabor
-    varSel.innerHTML = '<option value="">Escolha o sabor...</option>' +
+    // Monta as opções de variação
+    varSel.innerHTML = '<option value="">Escolha a variação...</option>' +
       variations.map(v =>
-        `<option value="${v.name}" data-price="${v.price}">${v.name} — ${R(v.price)}</option>`
+        `<option value="${v.name}" data-price="${v.price}" data-cost="${v.cost||0}">${v.name} — ${R(v.price)}</option>`
       ).join('');
     varSel.style.display = 'block';
   } else {
@@ -1235,7 +1243,7 @@ function onProductSelectChange(){
   }
 }
 
-// Quando muda o sabor — não faz nada além de manter a seleção (preço lido no addSaleItem)
+// Quando muda o variação — não faz nada além de manter a seleção (preço lido no addSaleItem)
 function onVariationSelectChange(){ /* reservado para expansão futura */ }
 
 function addSaleItem(){
@@ -1247,23 +1255,25 @@ function addSaleItem(){
 
   const pid  = opt.value;
   const type = opt.dataset.type;
-  const cost = parseFloat(opt.dataset.cost)||0;
+  const cost = parseFloat(opt.dataset.cost)||0; // custo padrão do produto
   const stock= opt.dataset.stock==='null'||opt.dataset.stock===''?null:parseInt(opt.dataset.stock);
 
   // Verifica se tem variações e se uma foi selecionada
   let variations = [];
   try{ variations = JSON.parse(opt.dataset.variations||'[]'); }catch(e){}
 
-  let itemName, itemPrice;
+  let itemName, itemPrice, itemCost = cost;
 
   if(variations.length > 0){
     const varOpt = varSel.selectedOptions[0];
-    if(!varOpt || !varOpt.value) return toast('Selecione o sabor/variação','error');
+    if(!varOpt || !varOpt.value) return toast('Selecione a variação','error');
     itemName  = opt.dataset.name + ' — ' + varOpt.value;
     itemPrice = parseFloat(varOpt.dataset.price)||0;
+    itemCost  = parseFloat(varOpt.dataset.cost)||0; // custo específico da variação
   } else {
     itemName  = opt.dataset.name;
     itemPrice = parseFloat(opt.dataset.price)||0;
+    itemCost  = cost; // custo do produto pai
   }
 
   // Checa estoque
@@ -1278,13 +1288,13 @@ function addSaleItem(){
     existing.qty++;
     existing.subtotal = +(existing.qty * existing.unitPrice).toFixed(2);
   } else {
-    saleItems.push({ productId:pid, name:itemName, qty:1, unitPrice:itemPrice, cost, subtotal:itemPrice });
+    saleItems.push({ productId:pid, name:itemName, qty:1, unitPrice:itemPrice, cost:itemCost, subtotal:itemPrice });
   }
 
   // Reseta os selects
   sel.value = '';
   varSel.style.display = 'none';
-  varSel.innerHTML = '<option value="">Escolha o sabor...</option>';
+  varSel.innerHTML = '<option value="">Escolha a variação...</option>';
 
   renderSaleRows();
   updateSaleSummary();
@@ -1674,7 +1684,7 @@ function reportProdutos(){
             <td><span class="badge ${p.type==='service'?'badge-blue':'badge-green'}">${p.type==='service'?'Serviço':'Produto'}</span></td>
             <td>${R(p.cost)}</td>
             <td style="font-weight:700">${R(p.price)}</td>
-            <td>${p.variations && p.variations.length > 0 ? `<span class="badge badge-purple">${p.variations.length} sabor(es)</span>` : 'Nenhuma'}</td>
+            <td>${p.variations && p.variations.length > 0 ? `<span class="badge badge-purple">${p.variations.length} variação(ões)</span>` : 'Nenhuma'}</td>
             <td>${p.type==='product'?((p.stock??0)<=5?`<span class="stock-low">⚠️ ${p.stock??0}`:`<span class="stock-ok">${p.stock??0}`)+'</span>':'—'}</td>
             <td style="font-weight:600">${salesCount[p.id]||0} un</td>
           </tr>`).join('')}
