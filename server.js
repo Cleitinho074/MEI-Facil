@@ -333,7 +333,23 @@ app.post('/api/sales', auth, async (req, res) => {
         `INSERT INTO sale_items(sale_id,user_id,product_id,product_name,qty,unit_price,cost,subtotal) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,
         [sale.id, req.userId, it.product_id || null, it.product_name || null, it.qty, it.unit_price, it.cost || 0, +(it.qty * it.unit_price).toFixed(2)]
       );
-      if (it.product_id) await client.query(`UPDATE products SET stock = GREATEST(0, COALESCE(stock,0) - $1) WHERE id=$2 AND user_id=$3 AND type='product' AND stock IS NOT NULL`, [it.qty, it.product_id, req.userId]);
+      if (it.product_id) {
+        const { rows: pRows } = await client.query(`SELECT stock, variations, type FROM products WHERE id=$1 AND user_id=$2`, [it.product_id, req.userId]);
+        if (pRows.length && pRows[0].type === 'product') {
+          if (it.variation_name) {
+            // Produto com variações: desconta do estoque da variação específica dentro do JSONB
+            let vars = pRows[0].variations || [];
+            const vIdx = vars.findIndex(v => v.name === it.variation_name);
+            if (vIdx >= 0 && vars[vIdx].stock !== null && vars[vIdx].stock !== undefined) {
+              vars[vIdx] = { ...vars[vIdx], stock: Math.max(0, (+vars[vIdx].stock || 0) - it.qty) };
+              await client.query(`UPDATE products SET variations=$1 WHERE id=$2 AND user_id=$3`, [JSON.stringify(vars), it.product_id, req.userId]);
+            }
+          } else if (pRows[0].stock !== null) {
+            // Produto simples, sem variações: desconta do estoque geral
+            await client.query(`UPDATE products SET stock = GREATEST(0, COALESCE(stock,0) - $1) WHERE id=$2 AND user_id=$3`, [it.qty, it.product_id, req.userId]);
+          }
+        }
+      }
     }
     if (status === 'paid') await client.query(`INSERT INTO cashflow_entries(user_id,description,type,value,entry_date,sale_id) VALUES($1,$2,'in',$3,$4,$5)`, [req.userId, `Venda — ${items.map(i => `${i.qty}x ${i.product_name}`).join(', ')}`, netTotal, date, sale.id]);
     await client.query('COMMIT');
