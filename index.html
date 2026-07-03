@@ -391,7 +391,7 @@ async function loadRevenueHistory(){
 }
 function mapSaleFromApi(s){
   return {
-    id: s.id, date: String(s.sale_date||'').substring(0,10), clientId: s.client_id, clientName: s.client_name || 'Cliente avulso',
+    id: s.id, date: String(s.sale_date||'').substring(0,10), time: s.sale_time || (String(s.sale_date||'').length>10?String(s.sale_date).substring(11,16):''), clientId: s.client_id, clientName: s.client_name || 'Cliente avulso',
     items: (s.items || []).map(i => ({
       productId: i.product_id, name: i.product_name, qty: +i.qty,
       unitPrice: +i.unit_price, cost: +i.cost, subtotal: +i.subtotal,
@@ -1011,10 +1011,11 @@ function renderSales(el){
     </div>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Data</th><th>Cliente</th><th>Itens</th><th>Pagamento</th><th>Taxa</th><th>Total líq.</th><th>Lucro</th><th>Status</th><th>Ações</th></tr></thead>
+        <thead><tr><th>Data</th><th>Hora</th><th>Cliente</th><th>Itens</th><th>Pagamento</th><th>Taxa</th><th>Total líq.</th><th>Lucro</th><th>Status</th><th>Ações</th></tr></thead>
         <tbody>
           ${[...state.sales].sort((a,b)=>String(b.date).localeCompare(String(a.date))).map(s=>`<tr>
             <td>${fmt(s.date)}</td>
+            <td style="color:var(--muted)">${s.time||'—'}</td>
             <td>${s.clientName||'<span style="color:var(--muted)">Avulso</span>'}</td>
             <td style="font-size:12px;color:var(--muted);max-width:160px">${s.items.map(i=>`${i.qty}× ${i.name}`).join('<br>')}</td>
             <td>${payIcon(s.payMethod)} ${payLabel(s.payMethod)}</td>
@@ -1037,7 +1038,7 @@ function viewSaleDetail(id){
   const s=state.sales.find(x=>x.id===id);
   if(!s)return;
   openModal(`
-    <div class="modal-title">🧾 Venda — ${fmt(s.date)}</div>
+    <div class="modal-title">🧾 Venda — ${fmt(s.date)}${s.time?' às '+s.time:''}</div>
     <div style="margin-bottom:16px;display:flex;gap:12px;flex-wrap:wrap">
       <div><span style="color:var(--muted);font-size:12px">CLIENTE</span><br><strong>${s.clientName||'Cliente avulso'}</strong></div>
       <div><span style="color:var(--muted);font-size:12px">STATUS</span><br><span class="badge ${s.status==='paid'?'badge-green':'badge-amber'}">${s.status==='paid'?'✅ Pago':'⏳ Pendente'}</span></div>
@@ -1074,10 +1075,12 @@ function openSaleModal(){
   saleItems=[];
   selectedPayMethod='dinheiro';
   const today=new Date().toISOString().split('T')[0];
+  const nowHM=new Date().toTimeString().slice(0,5);
   openModal(`
     <div class="modal-title">🛒 Nova Venda</div>
-    <div class="form-row">
+    <div class="form-row-3">
       <div class="form-group"><label>Data</label><input type="date" id="s-date" value="${today}"/></div>
+      <div class="form-group"><label>Hora</label><input type="time" id="s-time" value="${nowHM}"/></div>
       <div class="form-group"><label>Cliente (opcional)</label>
         <select id="s-client">
           <option value="">Cliente avulso</option>
@@ -1292,6 +1295,7 @@ function saveSale(){
   const client=clientId?state.clients.find(c=>c.id===clientId):null;
   const status=document.getElementById('s-status').value;
   const date=document.getElementById('s-date').value;
+  const time=document.getElementById('s-time')?.value || '';
 
   const payload={
     client_id:clientId,
@@ -1299,7 +1303,7 @@ function saveSale(){
     items:saleItems.map(i=>({
       product_id:i.productId, product_name:i.name, qty:i.qty, unit_price:i.unitPrice, cost:i.cost,
     })),
-    pay_method:selectedPayMethod, fee_pct:feePct, status, sale_date:date,
+    pay_method:selectedPayMethod, fee_pct:feePct, status, sale_date:date, sale_time:time,
   };
   saveSaleAsync(payload, btn);
 }
@@ -1780,12 +1784,21 @@ function reportPDF(){
         ${tipos.map(t=>`
           <label style="display:flex;align-items:flex-start;gap:12px;padding:12px 16px;border:1.5px solid var(--border);border-radius:8px;margin-bottom:8px;cursor:pointer;transition:.15s"
             onmouseover="this.style.borderColor='var(--blue-l)'" onmouseout="this.style.borderColor='var(--border)'">
-            <input type="radio" name="report-type" value="${t.id}" ${t.id==='mensal'?'checked':''} style="margin-top:3px;flex-shrink:0"/>
+            <input type="radio" name="report-type" value="${t.id}" ${t.id==='mensal'?'checked':''} onchange="toggleClientReportSelector()" style="margin-top:3px;flex-shrink:0"/>
             <div>
               <div style="font-weight:600;font-size:14px">${t.label}</div>
               <div style="font-size:12px;color:var(--muted);margin-top:2px">${t.desc}</div>
             </div>
           </label>`).join('')}
+      </div>
+
+      <div class="form-group" id="report-client-box" style="display:none;background:var(--blue-x);padding:14px 16px;border-radius:8px">
+        <label>👤 Cliente específico (opcional)</label>
+        <select id="report-client-filter">
+          <option value="">Todos os clientes (relatório geral de cadastro)</option>
+          ${state.clients.map(c=>`<option value="${c.id}">${c.name}</option>`).join('')}
+        </select>
+        <div style="font-size:12px;color:var(--muted);margin-top:6px">Selecionando um cliente, o relatório traz tudo que ele já comprou (dentro do período escolhido abaixo), o ticket médio e o dia da semana em que ele mais compra.</div>
       </div>
 
       <div class="form-group">
@@ -1839,6 +1852,13 @@ function reportPDF(){
     </div>`;
 }
 
+// Mostra o seletor de cliente específico apenas quando "Relatório de Clientes" está selecionado
+function toggleClientReportSelector(){
+  const tipo = document.querySelector('input[name="report-type"]:checked')?.value;
+  const box = document.getElementById('report-client-box');
+  if(box) box.style.display = tipo==='clientes' ? 'block' : 'none';
+}
+
 // Preenche De/Até (ou o campo de dia avulso) a partir dos atalhos de período
 function setReportPeriod(mode){
   document.querySelectorAll('#period-quick-pills .pay-pill').forEach(p=>p.classList.remove('active'));
@@ -1876,6 +1896,8 @@ function setReportPeriod(mode){
 
 function gerarPDF(){
   const tipo = document.querySelector('input[name="report-type"]:checked')?.value || 'mensal';
+  const clienteFiltroId = tipo==='clientes' ? (document.getElementById('report-client-filter')?.value || '') : '';
+  const clienteFiltro = clienteFiltroId ? state.clients.find(c=>c.id===clienteFiltroId) : null;
   const singleMode = document.getElementById('period-single-field')?.style.display !== 'none';
   let from, to;
   if(singleMode){
@@ -1940,7 +1962,7 @@ function gerarPDF(){
     mensal: 'RELATÓRIO MENSAL DE GESTÃO FINANCEIRA',
     vendas: 'RELATÓRIO DE VENDAS',
     estoque:'RELATÓRIO DE POSIÇÃO DE ESTOQUE',
-    clientes:'RELATÓRIO CADASTRAL DE CLIENTES',
+    clientes: clienteFiltro ? `RELATÓRIO DE CLIENTE — ${clienteFiltro.name.toUpperCase()}` : 'RELATÓRIO CADASTRAL DE CLIENTES',
     mei:    'RELATÓRIO DE ENQUADRAMENTO MEI',
     fluxo:  'RELATÓRIO DE FLUXO DE CAIXA',
   };
@@ -1967,10 +1989,11 @@ function gerarPDF(){
     seccoes += `
       <h2 class="abnt-section">2 DETALHAMENTO DAS VENDAS</h2>
       <table>
-        <tr><th>Data</th><th>Cliente</th><th>Itens</th><th>Pagamento</th><th>Total Líq. (R$)</th><th>Status</th></tr>
+        <tr><th>Data</th><th>Hora</th><th>Cliente</th><th>Itens</th><th>Pagamento</th><th>Total Líq. (R$)</th><th>Status</th></tr>
         ${vendasPeriodo.map(s=>`
           <tr>
             <td>${fmt(s.date)}</td>
+            <td>${s.time||'—'}</td>
             <td>${s.clientName||'Cliente avulso'}</td>
             <td>${s.items.map(i=>`${i.qty}x ${i.name}`).join(', ')}</td>
             <td>${payLabel(s.payMethod)}</td>
@@ -2016,18 +2039,73 @@ function gerarPDF(){
   }
 
   if(tipo==='clientes'){
-    seccoes += `
-      <h2 class="abnt-first-section">1 CADASTRO DE CLIENTES</h2>
-      <table>
-        <tr><th>Nome</th><th>CPF</th><th>Telefone</th><th>E-mail</th><th>Cidade</th><th>Total Compras (R$)</th></tr>
-        ${state.clients.map(c=>{
-          const totalC=state.sales.filter(s=>s.clientId===c.id&&s.status==='paid').reduce((a,s)=>a+s.netTotal,0);
-          return`<tr>
-            <td>${c.name}</td><td>${c.cpf||'—'}</td><td>${c.phone||'—'}</td>
-            <td>${c.email||'—'}</td><td>${c.city||'—'}</td><td>${R(totalC)}</td>
-          </tr>`;
-        }).join('')}
-      </table>`;
+    if(clienteFiltro){
+      const diasSemana=['Domingo','Segunda-feira','Terça-feira','Quarta-feira','Quinta-feira','Sexta-feira','Sábado'];
+      const comprasCliente = state.sales
+        .filter(s=>s.clientId===clienteFiltro.id && s.status==='paid')
+        .filter(s=>{
+          if(!from&&!to)return true;
+          const d=new Date(s.date+'T00:00:00');
+          return(!dataFrom||d>=dataFrom)&&(!dataTo||d<=dataTo);
+        })
+        .sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+
+      const totalGastoCliente = comprasCliente.reduce((a,s)=>a+s.netTotal,0);
+      const ticketMedioCliente = comprasCliente.length ? totalGastoCliente/comprasCliente.length : 0;
+
+      const freqDias = {};
+      comprasCliente.forEach(s=>{
+        const dia = diasSemana[new Date(s.date+'T00:00:00').getDay()];
+        freqDias[dia]=(freqDias[dia]||0)+1;
+      });
+      let diaPreferido='—', maxFreq=0;
+      Object.entries(freqDias).forEach(([dia,qtd])=>{ if(qtd>maxFreq){maxFreq=qtd;diaPreferido=dia;} });
+
+      seccoes += `
+        <h2 class="abnt-first-section">1 DADOS DO CLIENTE</h2>
+        <table>
+          <tr><th>Campo</th><th>Valor</th></tr>
+          <tr><td>Nome</td><td>${clienteFiltro.name}</td></tr>
+          <tr><td>CPF</td><td>${clienteFiltro.cpf||'—'}</td></tr>
+          <tr><td>Telefone</td><td>${clienteFiltro.phone||'—'}</td></tr>
+          <tr><td>E-mail</td><td>${clienteFiltro.email||'—'}</td></tr>
+          <tr><td>Cidade</td><td>${clienteFiltro.city||'—'}</td></tr>
+        </table>
+        <h2 class="abnt-section">2 RESUMO DE COMPRAS (${fmtPeriodo})</h2>
+        <table>
+          <tr><th>Indicador</th><th>Valor</th></tr>
+          <tr><td>Total gasto no período</td><td>${R(totalGastoCliente)}</td></tr>
+          <tr><td>Quantidade de compras pagas</td><td>${comprasCliente.length}</td></tr>
+          <tr><td>Ticket médio</td><td>${R(ticketMedioCliente)}</td></tr>
+          <tr><td>Dia da semana em que mais compra</td><td>${diaPreferido}${maxFreq?` (${maxFreq}x)`:''}</td></tr>
+        </table>
+        <h2 class="abnt-section">3 HISTÓRICO DE COMPRAS</h2>
+        <table>
+          <tr><th>Data</th><th>Dia da Semana</th><th>Hora</th><th>Itens</th><th>Pagamento</th><th>Total Líq. (R$)</th></tr>
+          ${comprasCliente.map(s=>`
+            <tr>
+              <td>${fmt(s.date)}</td>
+              <td>${diasSemana[new Date(s.date+'T00:00:00').getDay()]}</td>
+              <td>${s.time||'—'}</td>
+              <td>${s.items.map(i=>`${i.qty}x ${i.name}`).join(', ')}</td>
+              <td>${payLabel(s.payMethod)}</td>
+              <td>${R(s.netTotal)}</td>
+            </tr>`).join('') || '<tr><td colspan="6">Nenhuma compra paga encontrada no período selecionado</td></tr>'}
+        </table>`;
+    } else {
+      seccoes += `
+        <h2 class="abnt-first-section">1 CADASTRO DE CLIENTES</h2>
+        <table>
+          <tr><th>Nome</th><th>CPF</th><th>Telefone</th><th>E-mail</th><th>Cidade</th><th>Total Compras (R$)</th></tr>
+          ${state.clients.map(c=>{
+            const totalC=state.sales.filter(s=>s.clientId===c.id&&s.status==='paid').reduce((a,s)=>a+s.netTotal,0);
+            return`<tr>
+              <td>${c.name}</td><td>${c.cpf||'—'}</td><td>${c.phone||'—'}</td>
+              <td>${c.email||'—'}</td><td>${c.city||'—'}</td><td>${R(totalC)}</td>
+            </tr>`;
+          }).join('')}
+        </table>`;
+    }
   }
 
   if(tipo==='mei'){
