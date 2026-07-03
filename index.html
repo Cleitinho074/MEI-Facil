@@ -415,7 +415,7 @@ function mapSaleFromApi(s){
   return {
     id: s.id, date: String(s.sale_date||'').substring(0,10), time: s.sale_time || (String(s.sale_date||'').length>10?String(s.sale_date).substring(11,16):''), clientId: s.client_id, clientName: s.client_name || 'Cliente avulso',
     items: (s.items || []).map(i => ({
-      productId: i.product_id, name: i.product_name, qty: +i.qty,
+      productId: i.product_id, name: i.product_name, variationName: i.variation_name || null, qty: +i.qty,
       unitPrice: +i.unit_price, cost: +i.cost, subtotal: +i.subtotal,
     })),
     total: +s.total, profit: +s.profit, status: s.status, payMethod: s.pay_method,
@@ -1189,6 +1189,7 @@ let selectedPayMethod='dinheiro';
 function openSaleModal(){
   saleItems=[];
   selectedPayMethod='dinheiro';
+  selectedSaleProduct=null;
   const today=new Date().toISOString().split('T')[0];
   const nowHM=new Date().toTimeString().slice(0,5);
   openModal(`
@@ -1210,26 +1211,16 @@ function openSaleModal(){
         <div class="sale-item-row sale-item-header"><span>Produto/Serviço</span><span>Qtd</span><span>Unit. R$</span><span>Subtotal</span><span></span></div>
         <div id="sale-rows"></div>
         <div class="sale-item-add" style="flex-direction:column;gap:8px">
-          <input type="text" id="add-product-search" placeholder="🔍 Buscar produto ou variação..." oninput="filterProductSelect()" style="width:100%"/>
-          <div style="display:flex;gap:8px;width:100%">
-            <select id="add-product" style="flex:2" onchange="onProductSelectChange()">
-              <option value="">Selecionar produto/serviço...</option>
-              ${state.products.map(p =>
-                `<option value="${p.id}"
-                  data-price="${p.price}"
-                  data-cost="${p.cost}"
-                  data-stock="${p.stock}"
-                  data-type="${p.type}"
-                  data-name="${p.name}"
-                  data-variations='${JSON.stringify(p.variations||[])}'
-                >${p.name} — ${R(p.price)}${p.type==='product'?` (est: ${p.stock??'∞'})`:''}</option>`
-              ).join('')}
-            </select>
-            <select id="add-variation" style="flex:1;display:none" onchange="onVariationSelectChange()">
-              <option value="">Escolha a variação...</option>
-            </select>
+          <div style="position:relative;width:100%">
+            <input type="text" id="add-product-search" placeholder="🔍 Buscar produto ou variação..." autocomplete="off"
+              oninput="renderProductSearchResults()" onfocus="renderProductSearchResults()"
+              onblur="setTimeout(()=>{const r=document.getElementById('product-search-results'); if(r)r.style.display='none';},150)"
+              style="width:100%"/>
+            <div id="product-search-results" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:50;background:var(--card);border:1.5px solid var(--border);border-radius:8px;max-height:240px;overflow-y:auto;margin-top:4px;box-shadow:var(--shadow)"></div>
           </div>
-          <input type="text" id="add-variation-search" placeholder="🔍 Buscar variação..." oninput="filterVariationSelect()" style="width:100%;display:none"/>
+          <select id="add-variation" style="width:100%;display:none" onchange="onVariationSelectChange()">
+            <option value="">Escolha a variação...</option>
+          </select>
           <button class="btn btn-primary btn-sm" style="width:100%" onclick="addSaleItem()">+ Adicionar item</button>
         </div>
       </div>
@@ -1296,123 +1287,106 @@ function openSaleModal(){
 function normalizeSearch(s){
   return (s||'').toString().normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
 }
-// Filtra o select de produtos pelo nome do produto OU pelo nome de qualquer variação dele
-function filterProductSelect(){
+let selectedSaleProduct = null; // produto atualmente escolhido no autocomplete da venda
+
+// Monta a lista de resultados clicáveis abaixo do campo de busca
+function renderProductSearchResults(){
   const q = normalizeSearch(document.getElementById('add-product-search')?.value);
-  const sel = document.getElementById('add-product');
-  if(!sel) return;
-  Array.from(sel.options).forEach(opt=>{
-    if(!opt.value){ opt.hidden=false; return; }
-    let variations=[];
-    try{ variations = JSON.parse(opt.dataset.variations||'[]'); }catch(e){}
-    const matchesProduct = normalizeSearch(opt.dataset.name).includes(q);
-    const matchesVariation = variations.some(v=>normalizeSearch(v.name).includes(q));
-    opt.hidden = q!=='' && !matchesProduct && !matchesVariation;
-  });
-}
-// Filtra o select de variações do produto já escolhido
-function filterVariationSelect(){
-  const q = normalizeSearch(document.getElementById('add-variation-search')?.value);
-  const sel = document.getElementById('add-variation');
-  if(!sel) return;
-  Array.from(sel.options).forEach(opt=>{
-    if(!opt.value){ opt.hidden=false; return; }
-    opt.hidden = q!=='' && !normalizeSearch(opt.textContent).includes(q);
-  });
+  const box = document.getElementById('product-search-results');
+  if(!box) return;
+  const matches = state.products.filter(p=>{
+    const matchesProduct = normalizeSearch(p.name).includes(q);
+    const matchesVariation = (p.variations||[]).some(v=>normalizeSearch(v.name).includes(q));
+    return matchesProduct || matchesVariation;
+  }).slice(0,40);
+
+  if(!matches.length){
+    box.innerHTML = `<div style="padding:10px 12px;color:var(--muted);font-size:13px">Nenhum produto encontrado</div>`;
+  } else {
+    box.innerHTML = matches.map(p=>{
+      const hasVars = p.variations && p.variations.length>0;
+      const sub = p.type==='service' ? 'Serviço' : (hasVars ? `${p.variations.length} variação(ões)` : `Estoque: ${p.stock??'∞'}`);
+      return `<div style="padding:9px 12px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px" onmousedown="selectSaleProduct('${p.id}')">
+        <div style="font-weight:600">${p.name}${hasVars?'':' — '+R(p.price)}</div>
+        <div style="font-size:11px;color:var(--muted)">${sub}</div>
+      </div>`;
+    }).join('');
+  }
+  box.style.display = 'block';
 }
 
-// Quando muda o produto — mostra/esconde o select de variação
-function onProductSelectChange(){
-  const sel = document.getElementById('add-product');
+// Usuário clicou num resultado da busca
+function selectSaleProduct(pid){
+  const p = state.products.find(x=>x.id===pid);
+  if(!p) return;
+  selectedSaleProduct = p;
+  document.getElementById('add-product-search').value = p.name;
+  document.getElementById('product-search-results').style.display = 'none';
+
   const varSel = document.getElementById('add-variation');
-  const varSearch = document.getElementById('add-variation-search');
-  const opt = sel.selectedOptions[0];
-  if(!opt || !opt.value){ varSel.style.display='none'; if(varSearch){varSearch.style.display='none';varSearch.value='';} return; }
-
-  let variations = [];
-  try{ variations = JSON.parse(opt.dataset.variations||'[]'); }catch(e){}
-
+  const variations = p.variations || [];
   if(variations.length > 0){
-    // Monta as opções de variação
     varSel.innerHTML = '<option value="">Escolha a variação...</option>' +
       variations.map(v =>
         `<option value="${v.name}" data-price="${v.price}" data-cost="${v.cost||0}" data-stock="${v.stock!==null&&v.stock!==undefined?v.stock:''}">${v.name} — ${R(v.price)}${v.stock!==null&&v.stock!==undefined?' (est: '+v.stock+')':''}</option>`
       ).join('');
     varSel.style.display = 'block';
-    if(varSearch){ varSearch.style.display = variations.length>5 ? 'block' : 'none'; varSearch.value=''; }
   } else {
     varSel.style.display = 'none';
-    if(varSearch){ varSearch.style.display='none'; varSearch.value=''; }
+    varSel.innerHTML = '<option value="">Escolha a variação...</option>';
   }
 }
 
-// Quando muda o variação — não faz nada além de manter a seleção (preço lido no addSaleItem)
+// Quando muda a variação — não faz nada além de manter a seleção (preço lido no addSaleItem)
 function onVariationSelectChange(){ /* reservado para expansão futura */ }
 
 function addSaleItem(){
-  const sel    = document.getElementById('add-product');
+  const p = selectedSaleProduct;
+  if(!p) return toast('Busque e selecione um produto','error');
+
   const varSel = document.getElementById('add-variation');
-  const opt    = sel.selectedOptions[0];
-
-  if(!opt || !opt.value) return toast('Selecione um produto','error');
-
-  const pid  = opt.value;
-  const type = opt.dataset.type;
-  const cost = parseFloat(opt.dataset.cost)||0; // custo padrão do produto
-  const stock= opt.dataset.stock==='null'||opt.dataset.stock===''?null:parseInt(opt.dataset.stock);
-
-  // Verifica se tem variações e se uma foi selecionada
-  let variations = [];
-  try{ variations = JSON.parse(opt.dataset.variations||'[]'); }catch(e){}
-
-  let itemName, itemPrice, itemCost = cost;
+  const variations = p.variations || [];
+  let itemName, itemPrice, itemCost = p.cost||0, varName = null;
 
   if(variations.length > 0){
     const varOpt = varSel.selectedOptions[0];
     if(!varOpt || !varOpt.value) return toast('Selecione a variação','error');
-    itemName  = opt.dataset.name + ' — ' + varOpt.value;
+    varName   = varOpt.value;
+    itemName  = p.name + ' — ' + varOpt.value;
     itemPrice = parseFloat(varOpt.dataset.price)||0;
     itemCost  = parseFloat(varOpt.dataset.cost)||0; // custo específico da variação
   } else {
-    itemName  = opt.dataset.name;
-    itemPrice = parseFloat(opt.dataset.price)||0;
-    itemCost  = cost; // custo do produto pai
+    itemName  = p.name;
+    itemPrice = parseFloat(p.price)||0;
+    itemCost  = p.cost||0; // custo do produto pai
   }
 
   // Checa estoque — usa estoque da variação se disponível, senão usa o geral do produto
-  let estoqueDisp = stock; // estoque global do produto
+  let estoqueDisp = p.stock;
   if(variations.length > 0){
     const varOpt2 = varSel.selectedOptions[0];
     const varStockRaw = varOpt2?.dataset?.stock;
-    if(varStockRaw !== '' && varStockRaw !== undefined && varStockRaw !== 'null'){
-      estoqueDisp = parseInt(varStockRaw);
-    } else {
-      estoqueDisp = null; // sem controle de estoque para esta variação
-    }
+    estoqueDisp = (varStockRaw !== '' && varStockRaw !== undefined && varStockRaw !== 'null') ? parseInt(varStockRaw) : null;
   }
-  if(type==='product' && estoqueDisp !== null){
-    const noCarrinho = saleItems.filter(i=>i.productId===pid && i.name===itemName).reduce((a,i)=>a+i.qty,0);
+  if(p.type==='product' && estoqueDisp !== null){
+    const noCarrinho = saleItems.filter(i=>i.productId===p.id && i.name===itemName).reduce((a,i)=>a+i.qty,0);
     if(noCarrinho >= estoqueDisp) return toast(`Estoque insuficiente para "${itemName}" (${estoqueDisp} un disponíveis)`,'error');
   }
 
   // Adiciona ou incrementa
-  const varName = variations.length>0 ? varSel.selectedOptions[0].value : null;
-  const existing = saleItems.find(i => i.productId===pid && i.name===itemName);
+  const existing = saleItems.find(i => i.productId===p.id && i.name===itemName);
   if(existing){
     existing.qty++;
     existing.subtotal = +(existing.qty * existing.unitPrice).toFixed(2);
   } else {
-    saleItems.push({ productId:pid, variationName:varName, name:itemName, qty:1, unitPrice:itemPrice, cost:itemCost, subtotal:itemPrice });
+    saleItems.push({ productId:p.id, variationName:varName, name:itemName, qty:1, unitPrice:itemPrice, cost:itemCost, subtotal:itemPrice });
   }
 
-  // Reseta os selects
-  sel.value = '';
+  // Reseta a busca e os selects
+  selectedSaleProduct = null;
+  document.getElementById('add-product-search').value = '';
   varSel.style.display = 'none';
   varSel.innerHTML = '<option value="">Escolha a variação...</option>';
-  const prodSearch = document.getElementById('add-product-search');
-  const varSearch = document.getElementById('add-variation-search');
-  if(prodSearch){ prodSearch.value=''; filterProductSelect(); }
-  if(varSearch){ varSearch.value=''; varSearch.style.display='none'; }
 
   renderSaleRows();
   updateSaleSummary();
@@ -1906,9 +1880,18 @@ function openClientDetailModal(clientId){
   const clientName=clientSales[0].clientName||'Cliente';
   const totalGasto=clientSales.reduce((a,s)=>a+s.netTotal,0);
   const totalVisits=clientSales.length;
-  const itemFreq={};
-  clientSales.forEach(s=>s.items.forEach(i=>{itemFreq[i.name]=(itemFreq[i.name]||0)+i.qty;}));
-  const topItems=Object.entries(itemFreq).sort((a,b)=>b[1]-a[1]);
+
+  // Agrupa por produto base e, dentro de cada produto, por variação
+  const productFreq={};
+  clientSales.forEach(s=>s.items.forEach(i=>{
+    const baseName = i.variationName ? i.name.replace(` — ${i.variationName}`,'') : i.name;
+    const key = i.productId || baseName;
+    if(!productFreq[key]) productFreq[key] = { name: baseName, qty:0, variations:{} };
+    productFreq[key].qty += i.qty;
+    if(i.variationName) productFreq[key].variations[i.variationName] = (productFreq[key].variations[i.variationName]||0) + i.qty;
+  }));
+  const topProducts = Object.values(productFreq).sort((a,b)=>b.qty-a.qty);
+
   openModal(`
     <div class="modal-title">👤 ${clientName}</div>
     <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px">
@@ -1917,9 +1900,16 @@ function openClientDetailModal(clientId){
       <div class="card card-metric" style="flex:1;min-width:110px;padding:14px"><div class="card-label">Ticket médio</div><div class="card-value amber" style="font-size:20px">${R(totalGasto/totalVisits)}</div></div>
     </div>
     <div style="margin-bottom:16px">
-      <div style="font-weight:700;margin-bottom:10px">⭐ Itens mais pedidos</div>
-      <div style="display:flex;flex-wrap:wrap;gap:8px">
-        ${topItems.map(([name,qty],i)=>`<div style="background:${i===0?'var(--blue-x)':'var(--bg)'};border:1px solid var(--border);border-radius:8px;padding:6px 14px;font-size:13px">${i===0?'🏆 ':''}${name} <strong style="color:var(--blue-l)">${qty}x</strong></div>`).join('')}
+      <div style="font-weight:700;margin-bottom:10px">⭐ Produtos e variações mais pedidos</div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        ${topProducts.map((p,i)=>{
+          const varEntries = Object.entries(p.variations).sort((a,b)=>b[1]-a[1]);
+          const topVar = varEntries[0];
+          return `<div style="background:${i===0?'var(--blue-x)':'var(--bg)'};border:1px solid var(--border);border-radius:8px;padding:8px 14px;font-size:13px">
+            <div>${i===0?'🏆 ':''}<strong>${p.name}</strong> <span style="color:var(--blue-l);font-weight:700">${p.qty}x</span></div>
+            ${topVar?`<div style="font-size:12px;color:var(--muted);margin-top:2px">Variação preferida: <strong style="color:var(--text)">${topVar[0]}</strong> (${topVar[1]}x)${varEntries.length>1?` · outras: ${varEntries.slice(1).map(([n,q])=>`${n} (${q}x)`).join(', ')}`:''}</div>`:''}
+          </div>`;
+        }).join('')}
       </div>
     </div>
     <div>
@@ -2291,6 +2281,17 @@ function gerarPDF(){
       let diaPreferido='—', maxFreq=0;
       Object.entries(freqDias).forEach(([dia,qtd])=>{ if(qtd>maxFreq){maxFreq=qtd;diaPreferido=dia;} });
 
+      // Produto/variação mais pedidos pelo cliente (mesma lógica da tela de detalhe)
+      const produtosFreqPdf = {};
+      comprasCliente.forEach(s=>s.items.forEach(i=>{
+        const baseName = i.variationName ? i.name.replace(` — ${i.variationName}`,'') : i.name;
+        const key = i.productId || baseName;
+        if(!produtosFreqPdf[key]) produtosFreqPdf[key] = { name: baseName, qty:0, variations:{} };
+        produtosFreqPdf[key].qty += i.qty;
+        if(i.variationName) produtosFreqPdf[key].variations[i.variationName] = (produtosFreqPdf[key].variations[i.variationName]||0) + i.qty;
+      }));
+      const topProdutosPdf = Object.values(produtosFreqPdf).sort((a,b)=>b.qty-a.qty);
+
       seccoes += `
         <h2 class="abnt-first-section">1 DADOS DO CLIENTE</h2>
         <table>
@@ -2309,7 +2310,21 @@ function gerarPDF(){
           <tr><td>Ticket médio</td><td>${R(ticketMedioCliente)}</td></tr>
           <tr><td>Dia da semana em que mais compra</td><td>${diaPreferido}${maxFreq?` (${maxFreq}x)`:''}</td></tr>
         </table>
-        <h2 class="abnt-section">3 HISTÓRICO DE COMPRAS</h2>
+        <h2 class="abnt-section">3 PRODUTOS E VARIAÇÕES MAIS PEDIDOS</h2>
+        <table>
+          <tr><th>Produto</th><th>Qtd. Total</th><th>Variação Preferida</th><th>Outras Variações</th></tr>
+          ${topProdutosPdf.map(p=>{
+            const varEntries = Object.entries(p.variations).sort((a,b)=>b[1]-a[1]);
+            const topVar = varEntries[0];
+            return `<tr>
+              <td>${p.name}</td>
+              <td>${p.qty}x</td>
+              <td>${topVar?`${topVar[0]} (${topVar[1]}x)`:'—'}</td>
+              <td>${varEntries.length>1?varEntries.slice(1).map(([n,q])=>`${n} (${q}x)`).join(', '):'—'}</td>
+            </tr>`;
+          }).join('') || '<tr><td colspan="4">Nenhum item encontrado</td></tr>'}
+        </table>
+        <h2 class="abnt-section">4 HISTÓRICO DE COMPRAS</h2>
         <table>
           <tr><th>Data</th><th>Dia da Semana</th><th>Hora</th><th>Itens</th><th>Pagamento</th><th>Total Líq. (R$)</th></tr>
           ${comprasCliente.map(s=>`
