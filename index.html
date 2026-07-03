@@ -1210,6 +1210,7 @@ function openSaleModal(){
         <div class="sale-item-row sale-item-header"><span>Produto/Serviço</span><span>Qtd</span><span>Unit. R$</span><span>Subtotal</span><span></span></div>
         <div id="sale-rows"></div>
         <div class="sale-item-add" style="flex-direction:column;gap:8px">
+          <input type="text" id="add-product-search" placeholder="🔍 Buscar produto ou variação..." oninput="filterProductSelect()" style="width:100%"/>
           <div style="display:flex;gap:8px;width:100%">
             <select id="add-product" style="flex:2" onchange="onProductSelectChange()">
               <option value="">Selecionar produto/serviço...</option>
@@ -1228,6 +1229,7 @@ function openSaleModal(){
               <option value="">Escolha a variação...</option>
             </select>
           </div>
+          <input type="text" id="add-variation-search" placeholder="🔍 Buscar variação..." oninput="filterVariationSelect()" style="width:100%;display:none"/>
           <button class="btn btn-primary btn-sm" style="width:100%" onclick="addSaleItem()">+ Adicionar item</button>
         </div>
       </div>
@@ -1290,12 +1292,42 @@ function openSaleModal(){
     </div>`,true);
 }
 
+// Remove acentos e baixa a caixa para facilitar a busca
+function normalizeSearch(s){
+  return (s||'').toString().normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+}
+// Filtra o select de produtos pelo nome do produto OU pelo nome de qualquer variação dele
+function filterProductSelect(){
+  const q = normalizeSearch(document.getElementById('add-product-search')?.value);
+  const sel = document.getElementById('add-product');
+  if(!sel) return;
+  Array.from(sel.options).forEach(opt=>{
+    if(!opt.value){ opt.hidden=false; return; }
+    let variations=[];
+    try{ variations = JSON.parse(opt.dataset.variations||'[]'); }catch(e){}
+    const matchesProduct = normalizeSearch(opt.dataset.name).includes(q);
+    const matchesVariation = variations.some(v=>normalizeSearch(v.name).includes(q));
+    opt.hidden = q!=='' && !matchesProduct && !matchesVariation;
+  });
+}
+// Filtra o select de variações do produto já escolhido
+function filterVariationSelect(){
+  const q = normalizeSearch(document.getElementById('add-variation-search')?.value);
+  const sel = document.getElementById('add-variation');
+  if(!sel) return;
+  Array.from(sel.options).forEach(opt=>{
+    if(!opt.value){ opt.hidden=false; return; }
+    opt.hidden = q!=='' && !normalizeSearch(opt.textContent).includes(q);
+  });
+}
+
 // Quando muda o produto — mostra/esconde o select de variação
 function onProductSelectChange(){
   const sel = document.getElementById('add-product');
   const varSel = document.getElementById('add-variation');
+  const varSearch = document.getElementById('add-variation-search');
   const opt = sel.selectedOptions[0];
-  if(!opt || !opt.value){ varSel.style.display='none'; return; }
+  if(!opt || !opt.value){ varSel.style.display='none'; if(varSearch){varSearch.style.display='none';varSearch.value='';} return; }
 
   let variations = [];
   try{ variations = JSON.parse(opt.dataset.variations||'[]'); }catch(e){}
@@ -1307,8 +1339,10 @@ function onProductSelectChange(){
         `<option value="${v.name}" data-price="${v.price}" data-cost="${v.cost||0}" data-stock="${v.stock!==null&&v.stock!==undefined?v.stock:''}">${v.name} — ${R(v.price)}${v.stock!==null&&v.stock!==undefined?' (est: '+v.stock+')':''}</option>`
       ).join('');
     varSel.style.display = 'block';
+    if(varSearch){ varSearch.style.display = variations.length>5 ? 'block' : 'none'; varSearch.value=''; }
   } else {
     varSel.style.display = 'none';
+    if(varSearch){ varSearch.style.display='none'; varSearch.value=''; }
   }
 }
 
@@ -1362,18 +1396,23 @@ function addSaleItem(){
   }
 
   // Adiciona ou incrementa
+  const varName = variations.length>0 ? varSel.selectedOptions[0].value : null;
   const existing = saleItems.find(i => i.productId===pid && i.name===itemName);
   if(existing){
     existing.qty++;
     existing.subtotal = +(existing.qty * existing.unitPrice).toFixed(2);
   } else {
-    saleItems.push({ productId:pid, name:itemName, qty:1, unitPrice:itemPrice, cost:itemCost, subtotal:itemPrice });
+    saleItems.push({ productId:pid, variationName:varName, name:itemName, qty:1, unitPrice:itemPrice, cost:itemCost, subtotal:itemPrice });
   }
 
   // Reseta os selects
   sel.value = '';
   varSel.style.display = 'none';
   varSel.innerHTML = '<option value="">Escolha a variação...</option>';
+  const prodSearch = document.getElementById('add-product-search');
+  const varSearch = document.getElementById('add-variation-search');
+  if(prodSearch){ prodSearch.value=''; filterProductSelect(); }
+  if(varSearch){ varSearch.value=''; varSearch.style.display='none'; }
 
   renderSaleRows();
   updateSaleSummary();
@@ -1498,7 +1537,7 @@ function saveSale(){
     client_id:clientId,
     client_name:client?client.name:'Cliente avulso',
     items:saleItems.map(i=>({
-      product_id:i.productId, product_name:i.name, qty:i.qty, unit_price:i.unitPrice, cost:i.cost,
+      product_id:i.productId, product_name:i.name, variation_name:i.variationName||null, qty:i.qty, unit_price:i.unitPrice, cost:i.cost,
     })),
     pay_method:selectedPayMethod, fee_pct:feePct, status, sale_date:date, sale_time:time,
   };
