@@ -127,6 +127,7 @@ const initDB = async () => {
         created_at TIMESTAMP DEFAULT NOW()
       );
     `);
+    // Migrações seguras para bancos já existentes
     await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS store_name VARCHAR(150);`);
     await client.query(`ALTER TABLE sales ADD COLUMN IF NOT EXISTS sale_time VARCHAR(5);`);
     await client.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS variations JSONB DEFAULT '[]'::jsonb;`);
@@ -170,11 +171,14 @@ const auth = (req, res, next) => {
 };
 
 const signToken = (id) => jwt.sign({ id }, process.env.JWT_SECRET || 'dev-secret-change-me', { expiresIn: '7d' });
+
+// ── Helper ──────────────────────────────────────────────────────
 const Q = (text, params) => db.query(text, params);
 
 // ══════════════════════════════════════════════════════════════
 // AUTH ROUTES
 // ══════════════════════════════════════════════════════════════
+
 app.post('/api/auth/register', async (req, res) => {
   try {
     const { name, email, password, cpf_cnpj } = req.body;
@@ -244,7 +248,7 @@ app.put('/api/auth/profile', auth, async (req, res) => {
 });
 
 // ══════════════════════════════════════════════════════════════
-// CLIENTS & PRODUCTS
+// CLIENTS, PRODUCTS, SALES, CASHFLOW
 // ══════════════════════════════════════════════════════════════
 app.get('/api/clients', auth, async (req, res) => {
   const { rows } = await Q('SELECT * FROM clients WHERE user_id=$1 ORDER BY name', [req.userId]);
@@ -286,31 +290,13 @@ app.delete('/api/products/:id', auth, async (req, res) => {
   res.status(204).end();
 });
 app.patch('/api/products/:id/stock', auth, async (req, res) => {
-  const { mode, value, variation_name } = req.body;
+  const { mode, value } = req.body;
   const num = parseInt(value);
-  if (variation_name) {
-    const { rows } = await Q('SELECT variations FROM products WHERE id=$1 AND user_id=$2', [req.params.id, req.userId]);
-    if (!rows.length) return res.status(404).json({ error: 'Não encontrado' });
-    let vars = rows[0].variations || [];
-    let vIdx = vars.findIndex(v => v.name === variation_name);
-    if (vIdx >= 0) {
-      if (mode === 'set') vars[vIdx].stock = num;
-      else if (mode === 'in') vars[vIdx].stock = (vars[vIdx].stock || 0) + num;
-      else vars[vIdx].stock = Math.max(0, (vars[vIdx].stock || 0) - num);
-      const updated = await Q('UPDATE products SET variations=$1 WHERE id=$2 RETURNING *', [JSON.stringify(vars), req.params.id]);
-      return res.json(updated.rows[0]);
-    }
-    return res.status(404).json({ error: 'Sabor não encontrado' });
-  } else {
-    let sql = mode === 'set' ? 'UPDATE products SET stock=$1 WHERE id=$2 AND user_id=$3 RETURNING *' : mode === 'in' ? 'UPDATE products SET stock=COALESCE(stock,0)+$1 WHERE id=$2 AND user_id=$3 RETURNING *' : 'UPDATE products SET stock=GREATEST(0,COALESCE(stock,0)-$1) WHERE id=$2 AND user_id=$3 RETURNING *';
-    const { rows } = await Q(sql, [num, req.params.id, req.userId]);
-    rows.length ? res.json(rows[0]) : res.status(404).json({ error: 'Não encontrado' });
-  }
+  let sql = mode === 'set' ? 'UPDATE products SET stock=$1 WHERE id=$2 AND user_id=$3 RETURNING *' : mode === 'in' ? 'UPDATE products SET stock=COALESCE(stock,0)+$1 WHERE id=$2 AND user_id=$3 RETURNING *' : 'UPDATE products SET stock=GREATEST(0,COALESCE(stock,0)-$1) WHERE id=$2 AND user_id=$3 RETURNING *';
+  const { rows } = await Q(sql, [num, req.params.id, req.userId]);
+  rows.length ? res.json(rows[0]) : res.status(404).json({ error: 'Não encontrado' });
 });
 
-// ══════════════════════════════════════════════════════════════
-// SALES & CASHFLOW (Com baixa de estoque de sabores)
-// ══════════════════════════════════════════════════════════════
 app.get('/api/sales', auth, async (req, res) => {
   const { rows: sales } = await Q('SELECT * FROM sales WHERE user_id=$1 ORDER BY sale_date DESC, created_at DESC', [req.userId]);
   if (!sales.length) return res.json([]);
@@ -334,7 +320,6 @@ app.post('/api/sales', auth, async (req, res) => {
   const netTotal = +(total - feeValue).toFixed(2);
   const date = sale_date || new Date().toISOString().slice(0, 10);
   const time = (typeof sale_time === 'string' && /^\d{2}:\d{2}$/.test(sale_time)) ? sale_time : new Date().toTimeString().slice(0, 5);
-  
   const client = await db.connect();
   try {
     await client.query('BEGIN');
@@ -343,31 +328,12 @@ app.post('/api/sales', auth, async (req, res) => {
       [req.userId, client_id || null, client_name || null, total, profit, status, pay_method, fee_pct, feeValue, netTotal, notes || null, date, time, status === 'paid' ? new Date() : null]
     );
     const sale = saleRows[0];
-    
     for (const it of items) {
       await client.query(
         `INSERT INTO sale_items(sale_id,user_id,product_id,product_name,qty,unit_price,cost,subtotal) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,
         [sale.id, req.userId, it.product_id || null, it.product_name || null, it.qty, it.unit_price, it.cost || 0, +(it.qty * it.unit_price).toFixed(2)]
       );
-      
-      // Baixa de estoque dinâmica (Abate do produto pai ou da Variação/Sabor)
-      if (it.product_id) {
-        const { rows: pRows } = await client.query(`SELECT stock, variations, type FROM products WHERE id=$1 AND user_id=$2`, [it.product_id, req.userId]);
-        if (pRows.length > 0 && pRows[0].type === 'product') {
-          if (it.variation_name) {
-            let vars = pRows[0].variations || [];
-            let vIdx = vars.findIndex(v => v.name === it.variation_name);
-            if (vIdx >= 0 && vars[vIdx].stock !== null) {
-              vars[vIdx].stock = Math.max(0, (vars[vIdx].stock || 0) - it.qty);
-              await client.query(`UPDATE products SET variations=$1 WHERE id=$2`, [JSON.stringify(vars), it.product_id]);
-            }
-          } else {
-            if (pRows[0].stock !== null) {
-              await client.query(`UPDATE products SET stock = GREATEST(0, COALESCE(stock,0) - $1) WHERE id=$2`, [it.qty, it.product_id]);
-            }
-          }
-        }
-      }
+      if (it.product_id) await client.query(`UPDATE products SET stock = GREATEST(0, COALESCE(stock,0) - $1) WHERE id=$2 AND user_id=$3 AND type='product' AND stock IS NOT NULL`, [it.qty, it.product_id, req.userId]);
     }
     if (status === 'paid') await client.query(`INSERT INTO cashflow_entries(user_id,description,type,value,entry_date,sale_id) VALUES($1,$2,'in',$3,$4,$5)`, [req.userId, `Venda — ${items.map(i => `${i.qty}x ${i.product_name}`).join(', ')}`, netTotal, date, sale.id]);
     await client.query('COMMIT');
@@ -488,6 +454,7 @@ function fakeCPF() {
 }
 const fakePhoneMS = () => `(67) 9${rnd(6000,9999)}-${String(rnd(0,9999)).padStart(4,'0')}`;
 
+// Popula a conta demo com clientes, vendas e fluxo de caixa fictícios e realistas
 app.post('/api/admin/seed-demo', auth, demoOnly, async (req, res) => {
   const client = await db.connect();
   try {
@@ -500,12 +467,15 @@ app.post('/api/admin/seed-demo', auth, demoOnly, async (req, res) => {
     let { rows: products } = await client.query('SELECT * FROM products WHERE user_id=$1 AND active=true', [req.userId]);
     if (!products.length) {
       const seedProducts = [
-        {name: 'Coxinha', type: 'product', unit: 'un', variations: [{name: 'Frango c/ Catupiry', cost: 2.5, price: 6.5, stock: 40}, {name: 'Carne Seca', cost: 3.0, price: 7.5, stock: 25}]},
-        {name: 'Bolo no Pote', type: 'product', unit: 'un', variations: [{name: 'Chocolate', cost: 4.0, price: 12.0, stock: 15}, {name: 'Morango', cost: 4.5, price: 12.0, stock: 10}]},
-        {name: 'Refrigerante Lata', type: 'product', unit: 'un', cost: 3.0, price: 6.0, stock: 150, variations: []},
+        ['Coxinha de Frango','product','un',2.5,100,5.0,120],
+        ['Bolo de Chocolate','product','un',15,60,24.0,40],
+        ['Refrigerante Lata','product','un',3,60,4.8,150],
+        ['Suco de Laranja','product','un',2,150,5.0,100],
+        ['Pastel','product','un',3,90,5.7,120],
+        ['Bolo de Fuba','product','un',12,83,22.0,30],
       ];
-      for (const p of seedProducts) {
-        const { rows } = await client.query('INSERT INTO products(user_id,name,type,unit,cost,price,stock,variations) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *', [req.userId, p.name, p.type, p.unit, p.cost||0, p.price||0, p.stock||null, JSON.stringify(p.variations)]);
+      for (const [name,type,unit,cost,margin_pct,price,stock] of seedProducts) {
+        const { rows } = await client.query('INSERT INTO products(user_id,name,type,unit,cost,margin_pct,price,stock) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *', [req.userId,name,type,unit,cost,margin_pct,price,stock]);
         products.push(rows[0]);
       }
     }
@@ -520,7 +490,12 @@ app.post('/api/admin/seed-demo', auth, demoOnly, async (req, res) => {
       newClients.push(rows[0]);
     }
 
-    const payMethods = [{ key: 'dinheiro', fee: 0 }, { key: 'pix', fee: 0 }, { key: 'debito', fee: 1.5 }, { key: 'credito', fee: 2.99 }];
+    const payMethods = [
+      { key: 'dinheiro', fee: 0 },
+      { key: 'pix',      fee: 0 },
+      { key: 'debito',   fee: 1.5 },
+      { key: 'credito',  fee: 2.99 },
+    ];
     const despesas = ['Compra de insumos','Gás de cozinha','Embalagens','Conta de energia','Aluguel do ponto','Manutenção de equipamento'];
 
     let salesCreated = 0;
@@ -534,12 +509,7 @@ app.post('/api/admin/seed-demo', auth, demoOnly, async (req, res) => {
         const items = [];
         for (let k = 0; k < rnd(1, 3); k++) {
           const p = pick(products);
-          if (p.variations && p.variations.length > 0) {
-             const v = pick(p.variations);
-             items.push({ product_id: p.id, product_name: `${p.name} - ${v.name}`, qty: rnd(1, 3), unit_price: +v.price, cost: +v.cost });
-          } else {
-             items.push({ product_id: p.id, product_name: p.name, qty: rnd(1, 3), unit_price: +p.price, cost: +p.cost });
-          }
+          items.push({ product_id: p.id, product_name: p.name, qty: rnd(1, 4), unit_price: +p.price, cost: +p.cost });
         }
         const total = items.reduce((a, i) => a + i.qty * i.unit_price, 0);
         const profit = items.reduce((a, i) => a + (i.qty * i.unit_price - i.qty * i.cost), 0);
@@ -554,15 +524,17 @@ app.post('/api/admin/seed-demo', auth, demoOnly, async (req, res) => {
           `INSERT INTO sales(user_id,client_id,client_name,total,profit,status,pay_method,fee_pct,fee_value,net_total,sale_date,sale_time,paid_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
           [req.userId, clientRow ? clientRow.id : null, clientRow ? clientRow.name : 'Cliente avulso', total, profit, status, method.key, method.fee, feeValue, netTotal, dateStr, time, status === 'paid' ? day : null]
         );
+        const sale = saleRows[0];
         for (const it of items) {
           await client.query(
             `INSERT INTO sale_items(sale_id,user_id,product_id,product_name,qty,unit_price,cost,subtotal) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,
-            [saleRows[0].id, req.userId, it.product_id, it.product_name, it.qty, it.unit_price, it.cost, +(it.qty * it.unit_price).toFixed(2)]
+            [sale.id, req.userId, it.product_id, it.product_name, it.qty, it.unit_price, it.cost, +(it.qty * it.unit_price).toFixed(2)]
           );
+          await client.query(`UPDATE products SET stock = GREATEST(0, COALESCE(stock,0) - $1) WHERE id=$2 AND user_id=$3 AND type='product' AND stock IS NOT NULL`, [it.qty, it.product_id, req.userId]);
         }
         if (status === 'paid') {
           await client.query(`INSERT INTO cashflow_entries(user_id,description,type,value,entry_date,sale_id) VALUES($1,$2,'in',$3,$4,$5)`,
-            [req.userId, `Venda — ${items.map(i => `${i.qty}x ${i.product_name}`).join(', ')}`, netTotal, dateStr, saleRows[0].id]);
+            [req.userId, `Venda — ${items.map(i => `${i.qty}x ${i.product_name}`).join(', ')}`, netTotal, dateStr, sale.id]);
         }
         salesCreated++;
       }
@@ -582,6 +554,7 @@ app.post('/api/admin/seed-demo', auth, demoOnly, async (req, res) => {
   } finally { client.release(); }
 });
 
+// Remove todos os clientes, vendas e lançamentos de caixa da conta demo
 app.post('/api/admin/reset-demo', auth, demoOnly, async (req, res) => {
   const client = await db.connect();
   try {
