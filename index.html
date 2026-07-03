@@ -243,12 +243,13 @@ input[type="checkbox"]{border-radius:4px}
   document.documentElement.setAttribute('data-theme', savedTheme);
 
   // Helper Global para adicionar Variações/Variações
-  function getVariationRow(name = '', price = '', cost = '') {
+  function getVariationRow(name = '', price = '', cost = '', stock = '') {
     return `
-      <div class="variation-row" style="display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:8px;align-items:center;margin-top:6px;">
+      <div class="variation-row" style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr auto;gap:8px;align-items:center;margin-top:6px;">
         <input type="text" class="var-name" placeholder="Ex: Carne, Queijo..." value="${name}" style="min-width:0">
-        <input type="number" step="0.01" class="var-cost" placeholder="Custo (R$)" value="${cost}" style="min-width:0">
-        <input type="number" step="0.01" class="var-price" placeholder="Preço (R$)" value="${price}" style="min-width:0">
+        <input type="number" step="0.01" class="var-cost" placeholder="Custo R$" value="${cost}" style="min-width:0">
+        <input type="number" step="0.01" class="var-price" placeholder="Preço R$" value="${price}" style="min-width:0">
+        <input type="number" min="0" step="1" class="var-stock" placeholder="Estoque" value="${stock}" style="min-width:0">
         <button type="button" class="remove-item-btn" onclick="this.parentElement.remove()">×</button>
       </div>`;
   }
@@ -375,7 +376,7 @@ async function loadProducts(){
     id: p.id, name: p.name, type: p.type, unit: p.unit,
     cost: +p.cost, marginPct: +p.margin_pct, price: +p.price,
     stock: p.stock === null || p.stock === undefined ? null : +p.stock,
-    variations: p.variations || []
+    variations: (p.variations||[]).map(v=>({...v, stock: v.stock!==null&&v.stock!==undefined?+v.stock:null}))
   }));
 }
 async function loadSales(){
@@ -875,7 +876,14 @@ function renderProducts(el){
             <td><span class="badge badge-amber">${p.marginPct}%</span></td>
             <td style="font-weight:700;color:var(--green-l)">${R(p.price)}</td>
             <td>${p.variations && p.variations.length > 0 ? `<span class="badge badge-purple">${p.variations.length} variação(ões)</span>` : '<span style="color:var(--muted);font-size:12px">Nenhuma</span>'}</td>
-            <td>${p.type==='service'?'<span style="color:var(--muted);font-size:12px">N/A</span>':(p.stock??0)<=5?`<span class="stock-low">⚠️ ${p.stock??0} un</span>`:`<span class="stock-ok">${p.stock??0} un</span>`}</td>
+            <td>${p.type==='service'?'<span style="color:var(--muted);font-size:12px">N/A</span>':
+              (p.variations&&p.variations.length>0)?
+                p.variations.map(v=>`<div style="font-size:11px;white-space:nowrap">
+                  <span style="color:var(--muted)">${v.name}:</span>
+                  <span class="${(v.stock??0)<=5?'stock-low':'stock-ok'}">${v.stock??'∞'} un</span>
+                </div>`).join(''):
+                (p.stock??0)<=5?`<span class="stock-low">⚠️ ${p.stock??0} un</span>`:`<span class="stock-ok">${p.stock??0} un</span>`
+            }</td>
             <td>
               <button class="btn btn-ghost btn-sm" onclick="openProductModal('${p.id}')">✏️</button>
               ${p.type==='product'?`<button class="btn btn-sm" style="background:var(--blue-x);color:var(--blue)" onclick="openStockModal('${p.id}')">📦</button>`:''}
@@ -913,20 +921,24 @@ function openProductModal(id){
     
     <div class="form-group" style="margin-top:12px; padding:12px; background:var(--bg); border-radius:8px;">
       <label>Variações / Variações (Opcional)</label>
-      <div style="display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:8px;margin-bottom:4px;padding:0 2px">
-        <span style="font-size:11px;color:var(--muted);font-weight:600">NOME DA VARIAÇÃO</span>
-        <span style="font-size:11px;color:var(--muted);font-weight:600">CUSTO (R$)</span>
-        <span style="font-size:11px;color:var(--muted);font-weight:600">PREÇO (R$)</span>
+      <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr auto;gap:8px;margin-bottom:4px;padding:0 2px">
+        <span style="font-size:11px;color:var(--muted);font-weight:600">NOME</span>
+        <span style="font-size:11px;color:var(--muted);font-weight:600">CUSTO R$</span>
+        <span style="font-size:11px;color:var(--muted);font-weight:600">PREÇO R$</span>
+        <span style="font-size:11px;color:var(--muted);font-weight:600">ESTOQUE</span>
         <span></span>
       </div>
       <div id="p-variations-container" style="display:flex;flex-direction:column;gap:4px;margin-bottom:8px;">
-        ${(p.variations || []).map(v => getVariationRow(v.name, v.price, v.cost||'')).join('')}
+        ${(p.variations || []).map(v => getVariationRow(v.name, v.price, v.cost||'', v.stock!==null&&v.stock!==undefined?v.stock:'')).join('')}
       </div>
       <button type="button" class="btn btn-ghost btn-sm" onclick="addVariationRow()">+ Adicionar Variação</button>
     </div>
 
     <div id="stock-field" style="display:${p.type==='product'?'block':'none'}">
-      <div class="form-group"><label>Estoque (compartilhado entre variações)</label><input id="p-stock" type="number" min="0" value="${p.stock||0}"/></div>
+      <div class="form-group" id="global-stock-wrap">
+        <label>Estoque geral do produto <span style="font-size:11px;color:var(--muted)">(usado quando não há variações)</span></label>
+        <input id="p-stock" type="number" min="0" value="${p.stock||0}"/>
+      </div>
     </div>
     <div class="form-actions">
       <button class="btn btn-ghost" onclick="_closeModal()">Cancelar</button>
@@ -959,7 +971,9 @@ function saveProduct(id){
     const vName  = row.querySelector('.var-name').value.trim();
     const vCost  = parseFloat(row.querySelector('.var-cost')?.value) || 0;
     const vPrice = parseFloat(row.querySelector('.var-price').value);
-    if(vName && !isNaN(vPrice)) variations.push({ name: vName, cost: vCost, price: vPrice });
+    const vStockRaw = row.querySelector('.var-stock')?.value;
+    const vStock = vStockRaw !== '' && vStockRaw !== undefined ? (parseInt(vStockRaw) || 0) : null;
+    if(vName && !isNaN(vPrice)) variations.push({ name: vName, cost: vCost, price: vPrice, stock: vStock });
   });
 
   const obj={
@@ -999,8 +1013,23 @@ async function deleteProductAsync(id){
 }
 function openStockModal(id){
   const p=state.products.find(x=>x.id===id);
-  openModal(`
-    <div class="modal-title">📦 Ajustar Estoque — ${p.name}</div>
+  const hasVarStock = p.variations && p.variations.length > 0 && p.variations.some(v=>v.stock!==null&&v.stock!==undefined);
+
+  // Monta seção de variações com estoque individual
+  const varSection = hasVarStock ? `
+    <div style="margin-bottom:16px">
+      <label style="font-weight:600;display:block;margin-bottom:8px">Estoque por variação:</label>
+      ${p.variations.map((v,i)=>`
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--bg);border-radius:8px;margin-bottom:6px">
+          <span style="font-weight:600">${v.name}</span>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span class="${(v.stock??0)<=5?'stock-low':'stock-ok'}" style="min-width:50px;text-align:right">${v.stock??0} un</span>
+            <input type="number" min="0" value="${v.stock??0}" id="var-stock-${i}"
+              style="width:70px;padding:4px 8px;border:1.5px solid var(--border);border-radius:6px;text-align:center"/>
+          </div>
+        </div>`).join('')}
+      <div style="font-size:12px;color:var(--muted);margin-top:4px">✏️ Edite diretamente o estoque de cada variação e clique em Salvar.</div>
+    </div>` : `
     <div style="text-align:center;margin-bottom:16px">
       <div style="font-size:36px;font-weight:700;color:var(--blue-l)">${p.stock??0} un</div>
       <div style="color:var(--muted);font-size:13px">Estoque atual</div>
@@ -1008,17 +1037,21 @@ function openStockModal(id){
     <div class="form-row">
       <div class="form-group"><label>Tipo de ajuste</label>
         <select id="stock-op">
-          <option value="in">➕ Entrada (compra/reposição)</option>
-          <option value="out">➖ Saída (perda/descarte)</option>
-          <option value="set">📌 Definir quantidade exata</option>
+          <option value="in">➕ Entrada</option>
+          <option value="out">➖ Saída</option>
+          <option value="set">📌 Definir exato</option>
         </select>
       </div>
       <div class="form-group"><label>Quantidade</label><input type="number" id="stock-qty" min="0" value="1"/></div>
-    </div>
+    </div>`;
+
+  openModal(`
+    <div class="modal-title">📦 Ajustar Estoque — ${p.name}</div>
+    ${varSection}
     <div class="form-group"><label>Motivo</label><input id="stock-reason" placeholder="Reposição, perda, inventário..."/></div>
     <div class="form-actions">
       <button class="btn btn-ghost" onclick="_closeModal()">Cancelar</button>
-      <button class="btn btn-primary" onclick="saveStock('${id}')">💾 Confirmar</button>
+      <button class="btn btn-primary" onclick="${hasVarStock?`saveStockVariacoes('${id}')`:`saveStock('${id}')`}">💾 Confirmar</button>
     </div>`);
 }
 function saveStock(id){
@@ -1032,6 +1065,28 @@ async function saveStockAsync(id,mode,value){
   if(!data)return;
   _closeModal();
   toast(`Estoque atualizado: ${data.stock??0} un`,'success');
+  await loadProducts();
+  renderProducts(document.getElementById('content'));
+}
+
+// Salva estoque individual de cada variação
+async function saveStockVariacoes(id){
+  const p = state.products.find(x=>x.id===id);
+  if(!p) return;
+  const newVariations = p.variations.map((v,i)=>{
+    const input = document.getElementById(`var-stock-${i}`);
+    const newStock = input ? (parseInt(input.value)||0) : (v.stock??0);
+    return { ...v, stock: newStock };
+  });
+  // Salva via PUT do produto com variações atualizadas
+  const data = await apiCall(`/api/products/${id}`,'PUT',{
+    name: p.name, type: p.type, unit: p.unit,
+    cost: p.cost, margin_pct: p.marginPct, price: p.price,
+    stock: p.stock, variations: newVariations
+  });
+  if(!data) return;
+  _closeModal();
+  toast('Estoque das variações atualizado! ✅','success');
   await loadProducts();
   renderProducts(document.getElementById('content'));
 }
@@ -1235,7 +1290,7 @@ function onProductSelectChange(){
     // Monta as opções de variação
     varSel.innerHTML = '<option value="">Escolha a variação...</option>' +
       variations.map(v =>
-        `<option value="${v.name}" data-price="${v.price}" data-cost="${v.cost||0}">${v.name} — ${R(v.price)}</option>`
+        `<option value="${v.name}" data-price="${v.price}" data-cost="${v.cost||0}" data-stock="${v.stock!==null&&v.stock!==undefined?v.stock:''}">${v.name} — ${R(v.price)}${v.stock!==null&&v.stock!==undefined?' (est: '+v.stock+')':''}</option>`
       ).join('');
     varSel.style.display = 'block';
   } else {
@@ -1276,10 +1331,20 @@ function addSaleItem(){
     itemCost  = cost; // custo do produto pai
   }
 
-  // Checa estoque
-  if(type==='product' && stock!==null){
-    const noCarrinho = saleItems.filter(i=>i.productId===pid).reduce((a,i)=>a+i.qty,0);
-    if(noCarrinho >= stock) return toast(`Estoque insuficiente (${stock} un disponíveis)`,'error');
+  // Checa estoque — usa estoque da variação se disponível, senão usa o geral do produto
+  let estoqueDisp = stock; // estoque global do produto
+  if(variations.length > 0){
+    const varOpt2 = varSel.selectedOptions[0];
+    const varStockRaw = varOpt2?.dataset?.stock;
+    if(varStockRaw !== '' && varStockRaw !== undefined && varStockRaw !== 'null'){
+      estoqueDisp = parseInt(varStockRaw);
+    } else {
+      estoqueDisp = null; // sem controle de estoque para esta variação
+    }
+  }
+  if(type==='product' && estoqueDisp !== null){
+    const noCarrinho = saleItems.filter(i=>i.productId===pid && i.name===itemName).reduce((a,i)=>a+i.qty,0);
+    if(noCarrinho >= estoqueDisp) return toast(`Estoque insuficiente para "${itemName}" (${estoqueDisp} un disponíveis)`,'error');
   }
 
   // Adiciona ou incrementa
