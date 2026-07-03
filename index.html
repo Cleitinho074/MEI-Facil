@@ -209,6 +209,27 @@ input:focus,select:focus,textarea:focus{border-color:var(--blue-l)}
   .cards-grid{grid-template-columns:1fr}
   .pay-pill{font-size:12px;padding:6px 10px}
 }
+/* ── Impressão ABNT ── */
+@media print{
+  body,.sidebar,.topbar,.tabs,#report-tabs,.btn,.btn-primary,.btn-ghost,.section-header button{display:none!important}
+  #abnt-print{display:block!important}
+  @page{size:A4;margin:3cm 2.5cm 2cm 3cm}
+  #abnt-print{font-family:'Times New Roman',Times,serif;font-size:12pt;line-height:1.5;color:#000;background:#fff}
+  #abnt-print h1{font-size:14pt;font-weight:bold;text-align:center;text-transform:uppercase;margin:0 0 6pt}
+  #abnt-print h2{font-size:12pt;font-weight:bold;margin:18pt 0 6pt}
+  #abnt-print h3{font-size:12pt;font-weight:bold;margin:12pt 0 4pt}
+  #abnt-print p,#abnt-print td,#abnt-print th{font-size:12pt}
+  #abnt-print table{width:100%;border-collapse:collapse;margin:12pt 0}
+  #abnt-print th{border:1pt solid #000;padding:4pt 6pt;background:#eee;font-weight:bold;text-align:left}
+  #abnt-print td{border:1pt solid #000;padding:4pt 6pt}
+  #abnt-print .abnt-cover{text-align:center;padding-top:6cm}
+  #abnt-print .abnt-cover p{margin:4pt 0}
+  #abnt-print .abnt-section{page-break-before:always}
+  #abnt-print .abnt-first-section{page-break-before:avoid}
+  #abnt-print hr{border:none;border-top:1pt solid #000;margin:12pt 0}
+  #abnt-print .abnt-num{text-indent:0}
+}
+#abnt-print{display:none}
 </style>
 <script>
   // Inicializa o modo escuro antes de renderizar a página para evitar piscos brancos
@@ -275,6 +296,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--blue-l)}
   </div>
 </div>
 
+<div id="abnt-print"></div>
 <div class="modal-overlay" id="modal-overlay" onclick="closeModal(event)">
   <div class="modal" id="modal-box"><div id="modal-content"></div></div>
 </div>
@@ -1493,6 +1515,7 @@ function renderReports(el){
       <div class="tab" onclick="reportTab('pagamentos',this)">💳 Pagamentos</div>
       <div class="tab" onclick="reportTab('clientes',this)">👤 Clientes</div>
       <div class="tab" onclick="reportTab('mei',this)">🏛️ MEI</div>
+      <div class="tab" onclick="reportTab('pdf',this)" style="color:var(--red);font-weight:700">📄 Exportar PDF</div>
     </div>
     <div id="report-content">${reportGeral(totalIn,totalOut,profit,topSales)}</div>`;
   window._rd={totalIn,totalOut,profit,topSales};
@@ -1507,6 +1530,7 @@ function reportTab(tab,el){
   if(tab==='pagamentos')c.innerHTML=reportPagamentos();
   if(tab==='clientes')c.innerHTML=reportClientes();
   if(tab==='mei')c.innerHTML=reportMEI();
+  if(tab==='pdf')c.innerHTML=reportPDF();
 }
 function reportGeral(totalIn,totalOut,profit,topSales){
   const totalFees=state.sales.filter(s=>s.status==='paid').reduce((a,s)=>a+s.feeValue,0);
@@ -1719,6 +1743,278 @@ function reportMEI(){
         <div>ℹ️ Contador não obrigatório, mas recomendado ao se aproximar do limite</div>
       </div>
     </div>`;
+}
+
+
+// ══════════════════════════════════════
+// RELATÓRIO PDF — FORMATAÇÃO ABNT
+// ══════════════════════════════════════
+function reportPDF(){
+  const now = new Date();
+  const mes = now.toLocaleDateString('pt-BR',{month:'long',year:'numeric'});
+  const mesNum = String(now.getMonth()+1).padStart(2,'0');
+  const ano = now.getFullYear();
+  const dataEmissao = now.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'});
+  const horaEmissao = now.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+
+  // Tipos de relatório disponíveis
+  const tipos = [
+    {id:'mensal',    label:'📊 Relatório Mensal Completo',      desc:'Receitas, despesas, lucro, vendas e fluxo de caixa do mês atual'},
+    {id:'vendas',    label:'🛒 Relatório de Vendas',            desc:'Detalhamento de todas as vendas com itens, clientes e formas de pagamento'},
+    {id:'estoque',   label:'📦 Relatório de Estoque',           desc:'Posição atual de estoque de todos os produtos'},
+    {id:'clientes',  label:'👥 Relatório de Clientes',          desc:'Cadastro e histórico de compras dos clientes'},
+    {id:'mei',       label:'🏛️ Relatório de Enquadramento MEI', desc:'Situação do faturamento anual e projeção em relação ao limite'},
+    {id:'fluxo',     label:'💰 Relatório de Fluxo de Caixa',   desc:'Todos os lançamentos de entrada e saída'},
+  ];
+
+  return \`
+    <div class="card" style="max-width:700px;margin:0 auto">
+      <div style="text-align:center;margin-bottom:24px">
+        <div style="font-size:32px;margin-bottom:8px">📄</div>
+        <div style="font-size:20px;font-weight:700;color:var(--text)">Exportar Relatório em PDF</div>
+        <div style="color:var(--muted);font-size:13px;margin-top:4px">Formatação ABNT NBR 14724 • \${dataEmissao} \${horaEmissao}</div>
+      </div>
+
+      <div style="margin-bottom:20px">
+        <label style="font-weight:600;margin-bottom:12px;display:block">Selecione o tipo de relatório:</label>
+        \${tipos.map(t=>\`
+          <label style="display:flex;align-items:flex-start;gap:12px;padding:12px 16px;border:1.5px solid var(--border);border-radius:8px;margin-bottom:8px;cursor:pointer;transition:.15s"
+            onmouseover="this.style.borderColor='var(--blue-l)'" onmouseout="this.style.borderColor='var(--border)'">
+            <input type="radio" name="report-type" value="\${t.id}" \${t.id==='mensal'?'checked':''} style="margin-top:3px;flex-shrink:0"/>
+            <div>
+              <div style="font-weight:600;font-size:14px">\${t.label}</div>
+              <div style="font-size:12px;color:var(--muted);margin-top:2px">\${t.desc}</div>
+            </div>
+          </label>\`).join('')}
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Período — De</label>
+          <input type="date" id="pdf-from" value="\${ano}-\${mesNum}-01"/>
+        </div>
+        <div class="form-group">
+          <label>Período — Até</label>
+          <input type="date" id="pdf-to" value="\${new Date(ano,now.getMonth()+1,0).toISOString().slice(0,10)}"/>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Responsável / Emitente</label>
+        <input id="pdf-autor" value="\${state.user?.name||''}" placeholder="Nome do responsável"/>
+      </div>
+      <div class="form-group">
+        <label>CNPJ MEI</label>
+        <input id="pdf-cnpj" value="\${state.user?.cpf_cnpj||''}" placeholder="00.000.000/0001-00"/>
+      </div>
+      <div class="form-group">
+        <label>Observações (opcional)</label>
+        <textarea id="pdf-obs" rows="2" placeholder="Informações adicionais para constar no relatório..."></textarea>
+      </div>
+
+      <div style="display:flex;gap:12px;margin-top:8px">
+        <button class="btn btn-primary" style="flex:1;padding:14px" onclick="gerarPDF()">
+          🖨️ Gerar e Imprimir PDF
+        </button>
+      </div>
+      <div style="margin-top:12px;padding:12px;background:var(--blue-x);border-radius:8px;font-size:12px;color:var(--muted)">
+        💡 <strong>Como salvar como PDF:</strong> Quando a janela de impressão abrir, em "Destino" selecione <strong>"Salvar como PDF"</strong> e clique em Salvar.
+      </div>
+    </div>\`;
+}
+
+function gerarPDF(){
+  const tipo = document.querySelector('input[name="report-type"]:checked')?.value || 'mensal';
+  const from = document.getElementById('pdf-from')?.value;
+  const to   = document.getElementById('pdf-to')?.value;
+  const autor= document.getElementById('pdf-autor')?.value || state.user?.name || '—';
+  const cnpj = document.getElementById('pdf-cnpj')?.value || state.user?.cpf_cnpj || '—';
+  const obs  = document.getElementById('pdf-obs')?.value || '';
+
+  const dataFrom = from ? new Date(from+'T00:00:00') : null;
+  const dataTo   = to   ? new Date(to+'T23:59:59')   : null;
+  const fmtPeriodo = (from && to)
+    ? \`\${new Date(from+'T00:00:00').toLocaleDateString('pt-BR')} a \${new Date(to+'T00:00:00').toLocaleDateString('pt-BR')}\`
+    : 'Período completo';
+
+  const now = new Date();
+  const dataEmissao = now.toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'});
+
+  // Filtra vendas pelo período
+  const vendasPeriodo = state.sales.filter(s=>{
+    if(!from&&!to)return true;
+    const d=new Date(s.date+'T00:00:00');
+    return(!dataFrom||d>=dataFrom)&&(!dataTo||d<=dataTo);
+  });
+  const vendasPagas = vendasPeriodo.filter(s=>s.status==='paid');
+
+  // Filtra cashflow pelo período
+  const cfPeriodo = state.cashflow.filter(c=>{
+    if(!from&&!to)return true;
+    const d=new Date(c.date+'T00:00:00');
+    return(!dataFrom||d>=dataFrom)&&(!dataTo||d<=dataTo);
+  });
+
+  const totalIn  = cfPeriodo.filter(c=>c.type==='in').reduce((a,c)=>a+c.value,0);
+  const totalOut = cfPeriodo.filter(c=>c.type==='out').reduce((a,c)=>a+c.value,0);
+  const lucro    = totalIn-totalOut;
+  const totalVendas = vendasPagas.reduce((a,s)=>a+s.netTotal,0);
+  const totalFees   = vendasPagas.reduce((a,s)=>a+s.feeValue,0);
+  const totalLucro  = vendasPagas.reduce((a,s)=>a+s.profit,0);
+  const pctMEI = (state.yearRevenue/MEI_LIMIT*100).toFixed(1);
+  const meses  = new Date().getMonth()+1;
+
+  const nomes = {
+    mensal: 'RELATÓRIO MENSAL DE GESTÃO FINANCEIRA',
+    vendas: 'RELATÓRIO DE VENDAS',
+    estoque:'RELATÓRIO DE POSIÇÃO DE ESTOQUE',
+    clientes:'RELATÓRIO CADASTRAL DE CLIENTES',
+    mei:    'RELATÓRIO DE ENQUADRAMENTO MEI',
+    fluxo:  'RELATÓRIO DE FLUXO DE CAIXA',
+  };
+
+  // ── Conteúdo por tipo ──
+  let seccoes = '';
+
+  if(tipo==='mensal'||tipo==='vendas'){
+    seccoes += \`
+      <h2 class="\${tipo==='mensal'?'abnt-first-section':'abnt-section'}">1 RESUMO FINANCEIRO DO PERÍODO</h2>
+      <table>
+        <tr><th>Indicador</th><th>Valor (R$)</th></tr>
+        <tr><td>Total de Receitas (Entradas)</td><td>\${R(totalIn)}</td></tr>
+        <tr><td>Total de Despesas (Saídas)</td><td>\${R(totalOut)}</td></tr>
+        <tr><td>Resultado Líquido</td><td>\${R(lucro)}</td></tr>
+        <tr><td>Faturamento por Vendas</td><td>\${R(totalVendas)}</td></tr>
+        <tr><td>Taxas de Maquininha/Gateway</td><td>\${R(totalFees)}</td></tr>
+        <tr><td>Lucro Estimado das Vendas</td><td>\${R(totalLucro)}</td></tr>
+        <tr><td>Total de Vendas no Período</td><td>\${vendasPagas.length} transação(ões)</td></tr>
+      </table>\`;
+  }
+
+  if(tipo==='mensal'||tipo==='vendas'){
+    seccoes += \`
+      <h2 class="abnt-section">2 DETALHAMENTO DAS VENDAS</h2>
+      <table>
+        <tr><th>Data</th><th>Cliente</th><th>Itens</th><th>Pagamento</th><th>Total Líq. (R$)</th><th>Status</th></tr>
+        \${vendasPeriodo.map(s=>\`
+          <tr>
+            <td>\${fmt(s.date)}</td>
+            <td>\${s.clientName||'Cliente avulso'}</td>
+            <td>\${s.items.map(i=>\`\${i.qty}x \${i.name}\`).join(', ')}</td>
+            <td>\${payLabel(s.payMethod)}</td>
+            <td>\${R(s.netTotal)}</td>
+            <td>\${s.status==='paid'?'Pago':'Pendente'}</td>
+          </tr>\`).join('')}
+      </table>\`;
+  }
+
+  if(tipo==='mensal'||tipo==='fluxo'){
+    seccoes += \`
+      <h2 class="abnt-section">\${tipo==='fluxo'?'1':'3'} FLUXO DE CAIXA</h2>
+      <table>
+        <tr><th>Data</th><th>Descrição</th><th>Tipo</th><th>Valor (R$)</th></tr>
+        \${cfPeriodo.map(c=>\`
+          <tr>
+            <td>\${fmt(c.date)}</td>
+            <td>\${c.desc}</td>
+            <td>\${c.type==='in'?'Entrada':'Saída'}</td>
+            <td>\${c.type==='in'?'+':'-'}\${R(c.value)}</td>
+          </tr>\`).join('')}
+        <tr><td colspan="3"><strong>SALDO DO PERÍODO</strong></td><td><strong>\${R(lucro)}</strong></td></tr>
+      </table>\`;
+  }
+
+  if(tipo==='estoque'||tipo==='mensal'){
+    const prods = state.products.filter(p=>p.type==='product');
+    seccoes += \`
+      <h2 class="abnt-section">\${tipo==='estoque'?'1':'4'} POSIÇÃO DE ESTOQUE</h2>
+      <table>
+        <tr><th>Produto</th><th>Unidade</th><th>Custo Unit. (R$)</th><th>Preço Venda (R$)</th><th>Qtd. em Estoque</th><th>Valor em Estoque (R$)</th></tr>
+        \${prods.map(p=>\`
+          <tr>
+            <td>\${p.name}</td>
+            <td>\${p.unit||'un'}</td>
+            <td>\${R(p.cost)}</td>
+            <td>\${R(p.price)}</td>
+            <td\${(p.stock??0)<=5?' style="color:red;font-weight:bold"':''}>\${p.stock??0}</td>
+            <td>\${R((p.stock??0)*p.cost)}</td>
+          </tr>\`).join('')}
+        <tr><td colspan="5"><strong>TOTAL EM ESTOQUE</strong></td><td><strong>\${R(prods.reduce((a,p)=>a+(p.stock??0)*p.cost,0))}</strong></td></tr>
+      </table>\`;
+  }
+
+  if(tipo==='clientes'){
+    seccoes += \`
+      <h2 class="abnt-first-section">1 CADASTRO DE CLIENTES</h2>
+      <table>
+        <tr><th>Nome</th><th>CPF</th><th>Telefone</th><th>E-mail</th><th>Cidade</th><th>Total Compras (R$)</th></tr>
+        \${state.clients.map(c=>{
+          const totalC=state.sales.filter(s=>s.clientId===c.id&&s.status==='paid').reduce((a,s)=>a+s.netTotal,0);
+          return\`<tr>
+            <td>\${c.name}</td><td>\${c.cpf||'—'}</td><td>\${c.phone||'—'}</td>
+            <td>\${c.email||'—'}</td><td>\${c.city||'—'}</td><td>\${R(totalC)}</td>
+          </tr>\`;
+        }).join('')}
+      </table>\`;
+  }
+
+  if(tipo==='mei'){
+    const proj = (state.yearRevenue/meses)*12;
+    seccoes += \`
+      <h2 class="abnt-first-section">1 SITUAÇÃO DO ENQUADRAMENTO MEI</h2>
+      <table>
+        <tr><th>Indicador</th><th>Valor</th></tr>
+        <tr><td>Faturamento Acumulado no Ano</td><td>\${R(state.yearRevenue)}</td></tr>
+        <tr><td>Limite Anual MEI</td><td>\${R(MEI_LIMIT)}</td></tr>
+        <tr><td>Percentual Utilizado</td><td>\${pctMEI}%</td></tr>
+        <tr><td>Saldo Disponível</td><td>\${R(MEI_LIMIT-state.yearRevenue)}</td></tr>
+        <tr><td>Projeção Anual (com base nos meses decorridos)</td><td>\${R(proj)}</td></tr>
+        <tr><td>Situação</td><td>\${proj>MEI_LIMIT?'⚠️ RISCO DE DESENQUADRAMENTO':'✅ DENTRO DO LIMITE'}</td></tr>
+      </table>
+      <h2 class="abnt-section">2 FATURAMENTO POR MÊS</h2>
+      <table>
+        <tr><th>Mês/Ano</th><th>Faturamento (R$)</th><th>Qtd. Vendas</th></tr>
+        \${Array.from({length:meses},(_,i)=>{
+          const d=new Date(new Date().getFullYear(),i,1);
+          const mk=\`\${d.getFullYear()}-\${String(i+1).padStart(2,'0')}\`;
+          const vms=state.sales.filter(s=>s.status==='paid'&&s.date&&s.date.startsWith(mk));
+          const fat=vms.reduce((a,s)=>a+s.netTotal,0);
+          return\`<tr><td>\${d.toLocaleDateString('pt-BR',{month:'long',year:'numeric'})}</td><td>\${R(fat)}</td><td>\${vms.length}</td></tr>\`;
+        }).join('')}
+      </table>\`;
+  }
+
+  // ── Monta o HTML completo do relatório ABNT ──
+  const html = \`
+    <div class="abnt-cover">
+      <p><strong>\${autor}</strong></p>
+      <p>\${cnpj}</p>
+      <br/><br/><br/><br/>
+      <p><strong style="font-size:14pt">\${nomes[tipo]||'RELATÓRIO FINANCEIRO'}</strong></p>
+      <p><strong>Período: \${fmtPeriodo}</strong></p>
+      <br/><br/><br/><br/><br/><br/><br/><br/><br/>
+      <p>Campo Grande – MS</p>
+      <p>\${dataEmissao}</p>
+    </div>
+    <div class="abnt-section">
+      <h2>SUMÁRIO</h2>
+      <p>1. Resumo Financeiro do Período</p>
+      <p>2. Detalhamento das Vendas</p>
+      <p>3. Fluxo de Caixa</p>
+      <p>4. Posição de Estoque</p>
+      \${obs?\`<h2 class="abnt-section">OBSERVAÇÕES</h2><p>\${obs}</p>\`:''}
+    </div>
+    \${seccoes}
+    <div class="abnt-section">
+      <hr/>
+      <p style="font-size:10pt;text-align:center">Relatório gerado pelo sistema MEI Fácil em \${dataEmissao} às \${now.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}.</p>
+      <p style="font-size:10pt;text-align:center">Documento gerado eletronicamente — não requer assinatura.</p>
+    </div>\`;
+
+  // Injeta no div oculto e imprime
+  const printEl = document.getElementById('abnt-print');
+  printEl.innerHTML = html;
+  setTimeout(()=>{ window.print(); },200);
 }
 
 // ══════════════════════════════════════
