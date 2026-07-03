@@ -1132,19 +1132,26 @@ function openSaleModal(){
       <div class="sale-items-list" id="items-list">
         <div class="sale-item-row sale-item-header"><span>Produto/Serviço</span><span>Qtd</span><span>Unit. R$</span><span>Subtotal</span><span></span></div>
         <div id="sale-rows"></div>
-        <div class="sale-item-add">
-          <select id="add-product" style="flex:1">
-            <option value="">Selecionar produto/serviço...</option>
-            ${state.products.flatMap(p => {
-              if (p.variations && p.variations.length > 0) {
-                return p.variations.map(v => 
-                  `<option value="${p.id}" data-fullname="${p.name} - ${v.name}" data-price="${v.price}" data-cost="${p.cost}" data-stock="${p.stock}" data-type="${p.type}">${p.name} - ${v.name} — ${R(v.price)}${p.type==='product'?` (estoque: ${p.stock??'∞'})`:''}</option>`
-                );
-              }
-              return `<option value="${p.id}" data-fullname="${p.name}" data-price="${p.price}" data-cost="${p.cost}" data-stock="${p.stock}" data-type="${p.type}">${p.name} — ${R(p.price)}${p.type==='product'?` (estoque: ${p.stock??'∞'})`:''}</option>`;
-            }).join('')}
-          </select>
-          <button class="btn btn-primary btn-sm" onclick="addSaleItem()">+ Adicionar</button>
+        <div class="sale-item-add" style="flex-direction:column;gap:8px">
+          <div style="display:flex;gap:8px;width:100%">
+            <select id="add-product" style="flex:2" onchange="onProductSelectChange()">
+              <option value="">Selecionar produto/serviço...</option>
+              ${state.products.map(p =>
+                `<option value="${p.id}"
+                  data-price="${p.price}"
+                  data-cost="${p.cost}"
+                  data-stock="${p.stock}"
+                  data-type="${p.type}"
+                  data-name="${p.name}"
+                  data-variations='${JSON.stringify(p.variations||[])}'
+                >${p.name} — ${R(p.price)}${p.type==='product'?` (est: ${p.stock??'∞'})`:''}</option>`
+              ).join('')}
+            </select>
+            <select id="add-variation" style="flex:1;display:none" onchange="onVariationSelectChange()">
+              <option value="">Escolha o sabor...</option>
+            </select>
+          </div>
+          <button class="btn btn-primary btn-sm" style="width:100%" onclick="addSaleItem()">+ Adicionar item</button>
         </div>
       </div>
     </div>
@@ -1206,24 +1213,79 @@ function openSaleModal(){
     </div>`,true);
 }
 
-function addSaleItem(){
-  const sel=document.getElementById('add-product');
-  const opt=sel.selectedOptions[0];
-  if(!opt.value)return toast('Selecione um produto','error');
-  const pid=opt.value;
-  const fullname=opt.dataset.fullname;
-  const price=parseFloat(opt.dataset.price);
-  const cost=parseFloat(opt.dataset.cost);
-  const stock=opt.dataset.stock==='null'?null:parseInt(opt.dataset.stock);
-  const type=opt.dataset.type;
-  if(type==='product'&&stock!==null){
-    const alreadyInCart=saleItems.filter(i=>i.productId===pid).reduce((a,i)=>a+i.qty,0);
-    if(alreadyInCart>=stock)return toast(`Estoque insuficiente (${stock} un disponíveis)`,'error');
+// Quando muda o produto — mostra/esconde o select de variação
+function onProductSelectChange(){
+  const sel = document.getElementById('add-product');
+  const varSel = document.getElementById('add-variation');
+  const opt = sel.selectedOptions[0];
+  if(!opt || !opt.value){ varSel.style.display='none'; return; }
+
+  let variations = [];
+  try{ variations = JSON.parse(opt.dataset.variations||'[]'); }catch(e){}
+
+  if(variations.length > 0){
+    // Monta as opções de sabor
+    varSel.innerHTML = '<option value="">Escolha o sabor...</option>' +
+      variations.map(v =>
+        `<option value="${v.name}" data-price="${v.price}">${v.name} — ${R(v.price)}</option>`
+      ).join('');
+    varSel.style.display = 'block';
+  } else {
+    varSel.style.display = 'none';
   }
-  const existing=saleItems.find(i=>i.productId===pid && i.name===fullname);
-  if(existing){existing.qty++;existing.subtotal=+(existing.qty*existing.unitPrice).toFixed(2);}
-  else saleItems.push({productId:pid,name:fullname,qty:1,unitPrice:price,cost,subtotal:price});
-  sel.value='';
+}
+
+// Quando muda o sabor — não faz nada além de manter a seleção (preço lido no addSaleItem)
+function onVariationSelectChange(){ /* reservado para expansão futura */ }
+
+function addSaleItem(){
+  const sel    = document.getElementById('add-product');
+  const varSel = document.getElementById('add-variation');
+  const opt    = sel.selectedOptions[0];
+
+  if(!opt || !opt.value) return toast('Selecione um produto','error');
+
+  const pid  = opt.value;
+  const type = opt.dataset.type;
+  const cost = parseFloat(opt.dataset.cost)||0;
+  const stock= opt.dataset.stock==='null'||opt.dataset.stock===''?null:parseInt(opt.dataset.stock);
+
+  // Verifica se tem variações e se uma foi selecionada
+  let variations = [];
+  try{ variations = JSON.parse(opt.dataset.variations||'[]'); }catch(e){}
+
+  let itemName, itemPrice;
+
+  if(variations.length > 0){
+    const varOpt = varSel.selectedOptions[0];
+    if(!varOpt || !varOpt.value) return toast('Selecione o sabor/variação','error');
+    itemName  = opt.dataset.name + ' — ' + varOpt.value;
+    itemPrice = parseFloat(varOpt.dataset.price)||0;
+  } else {
+    itemName  = opt.dataset.name;
+    itemPrice = parseFloat(opt.dataset.price)||0;
+  }
+
+  // Checa estoque
+  if(type==='product' && stock!==null){
+    const noCarrinho = saleItems.filter(i=>i.productId===pid).reduce((a,i)=>a+i.qty,0);
+    if(noCarrinho >= stock) return toast(`Estoque insuficiente (${stock} un disponíveis)`,'error');
+  }
+
+  // Adiciona ou incrementa
+  const existing = saleItems.find(i => i.productId===pid && i.name===itemName);
+  if(existing){
+    existing.qty++;
+    existing.subtotal = +(existing.qty * existing.unitPrice).toFixed(2);
+  } else {
+    saleItems.push({ productId:pid, name:itemName, qty:1, unitPrice:itemPrice, cost, subtotal:itemPrice });
+  }
+
+  // Reseta os selects
+  sel.value = '';
+  varSel.style.display = 'none';
+  varSel.innerHTML = '<option value="">Escolha o sabor...</option>';
+
   renderSaleRows();
   updateSaleSummary();
 }
