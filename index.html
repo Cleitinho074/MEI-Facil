@@ -250,11 +250,16 @@ input[type="checkbox"]{border-radius:4px}
         <input type="number" step="0.01" class="var-cost" placeholder="Custo R$" value="${cost}" style="min-width:0">
         <input type="number" step="0.01" class="var-price" placeholder="Preço R$" value="${price}" style="min-width:0">
         <input type="number" min="0" step="1" class="var-stock" placeholder="Estoque" value="${stock}" style="min-width:0">
-        <button type="button" class="remove-item-btn" onclick="this.parentElement.remove()">×</button>
+        <button type="button" class="remove-item-btn" onclick="removeVariationRow(this)">×</button>
       </div>`;
   }
   window.addVariationRow = function() {
     document.getElementById('p-variations-container').insertAdjacentHTML('beforeend', getVariationRow());
+    if(window.updateStockFieldVisibility) window.updateStockFieldVisibility();
+  }
+  window.removeVariationRow = function(btn) {
+    btn.parentElement.remove();
+    if(window.updateStockFieldVisibility) window.updateStockFieldVisibility();
   }
 </script>
 </head>
@@ -934,7 +939,7 @@ function openProductModal(id){
       <button type="button" class="btn btn-ghost btn-sm" onclick="addVariationRow()">+ Adicionar Variação</button>
     </div>
 
-    <div id="stock-field" style="display:${p.type==='product'?'block':'none'}">
+    <div id="stock-field" style="display:${(p.type==='product' && (!p.variations||p.variations.length===0))?'block':'none'}">
       <div class="form-group" id="global-stock-wrap">
         <label>Estoque geral do produto <span style="font-size:11px;color:var(--muted)">(usado quando não há variações)</span></label>
         <input id="p-stock" type="number" min="0" value="${p.stock||0}"/>
@@ -945,11 +950,20 @@ function openProductModal(id){
       <button class="btn btn-primary" onclick="saveProduct(${id?`'${id}'`:'null'})">💾 Salvar</button>
     </div>`);
   setTimeout(calcPrice,50);
+  updateStockFieldVisibility();
 }
 function toggleStockField(){
-  const t=document.getElementById('p-type').value;
-  document.getElementById('stock-field').style.display=t==='product'?'block':'none';
+  updateStockFieldVisibility();
 }
+function updateStockFieldVisibility(){
+  const typeEl = document.getElementById('p-type');
+  const stockField = document.getElementById('stock-field');
+  const container = document.getElementById('p-variations-container');
+  if(!typeEl || !stockField || !container) return;
+  const hasVariations = container.querySelectorAll('.variation-row').length > 0;
+  stockField.style.display = (typeEl.value==='product' && !hasVariations) ? 'block' : 'none';
+}
+window.updateStockFieldVisibility = updateStockFieldVisibility;
 function calcPrice(){
   const cost=parseFloat(document.getElementById('p-cost')?.value)||0;
   const margin=parseFloat(document.getElementById('p-margin')?.value)||0;
@@ -983,7 +997,7 @@ function saveProduct(id){
     cost:parseFloat(document.getElementById('p-cost').value)||0,
     margin_pct:parseFloat(document.getElementById('p-margin').value)||0,
     price:parseFloat(document.getElementById('p-price').value)||0,
-    stock:type==='product'?(parseInt(document.getElementById('p-stock').value)||0):null,
+    stock:(type==='product' && variations.length===0)?(parseInt(document.getElementById('p-stock')?.value)||0):null,
     variations: variations
   };
   if(!obj.name)return toast('Nome é obrigatório','error');
