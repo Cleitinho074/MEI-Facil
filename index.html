@@ -1439,13 +1439,36 @@ function updateItemQty(idx,val){
   const qty=Math.max(1,parseInt(val)||1);
   const item=saleItems[idx];
   if(!item)return;
+
+  // Checa estoque — variação específica ou produto geral
   const p=state.products.find(x=>x.id===item.productId);
-  if(p&&p.type==='product'&&p.stock!==null&&qty>p.stock){
-    toast(`Estoque insuficiente: ${p.stock} un disponíveis`,'error');
-    return;
+  if(p&&p.type==='product'){
+    let estoqueDisp = null;
+    if(item.variationName && p.variations){
+      const v=p.variations.find(v=>v.name===item.variationName);
+      if(v&&v.stock!==null&&v.stock!==undefined) estoqueDisp=+v.stock;
+    } else if(p.stock!==null&&p.stock!==undefined){
+      estoqueDisp=+p.stock;
+    }
+    if(estoqueDisp!==null && qty>estoqueDisp){
+      toast(`Estoque insuficiente: ${estoqueDisp} un disponíveis`,'error');
+      // Reverte o input para o valor máximo
+      const input=document.querySelectorAll('.sale-item-row input[type="number"]')[idx];
+      if(input) input.value=estoqueDisp;
+      return;
+    }
   }
+
   item.qty=qty;
   item.subtotal=+(qty*item.unitPrice).toFixed(2);
+
+  // Atualiza o span de subtotal direto na linha sem re-renderizar tudo
+  const rows=document.querySelectorAll('#sale-rows .sale-item-row');
+  if(rows[idx]){
+    const subtotalSpan=rows[idx].querySelector('.item-subtotal');
+    if(subtotalSpan) subtotalSpan.textContent=R(item.subtotal);
+  }
+
   updateSaleSummary();
 }
 
