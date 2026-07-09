@@ -424,11 +424,19 @@ async function loadCashflow(){
   }));
 }
 async function loadDashboardStats(){
-  const data = await apiCall('/api/reports/dashboard');
+  // Busca stats e perfil em paralelo para garantir business_type atualizado
+  const [data, me] = await Promise.all([
+    apiCall('/api/reports/dashboard'),
+    apiCall('/api/auth/me')
+  ]);
+  if(me && me.user){
+    state.user = {...state.user, ...me.user};
+    state.businessType = me.user.business_type || 'MEI';
+  }
   if(data){
     state.yearRevenue = +data.year_revenue;
-    state.meiLimit = +data.mei_limit;
-    state.businessType = data.business_type || state.user?.business_type || 'MEI';
+    // Recalcula o limite com o tipo correto do usuário
+    state.meiLimit = getBusinessLimit(state.businessType) || +data.mei_limit;
     state.dashboardStats = data;
   }
 }
