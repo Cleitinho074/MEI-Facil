@@ -2597,15 +2597,17 @@ async function saveProfileAsync(payload){
   if(!data)return;
   state.user={...state.user,...data.user};
   state.businessType = data.user.business_type || 'MEI';
+  // Salva o novo token (que já contém o business_type atualizado)
+  if(data.token) localStorage.setItem('mei_jwt', data.token);
   document.getElementById('user-badge').textContent=(data.user.name||'U')[0].toUpperCase();
   toast('Dados da conta salvos! ✅','success');
-  // Se o tipo de empresa mudou, atualiza o dashboard imediatamente
-  // (sem navegar — só re-renderiza se já estiver na dashboard)
+  // Re-renderiza o dashboard imediatamente com o novo tipo
   if(state.page === 'dashboard'){
     renderDashboard(document.getElementById('content'));
-  } else {
-    // Mostra indicação visual de que a barra de limite foi atualizada
-    toast(`Tipo atualizado para ${getBusinessLabel(state.businessType)} — limite ${currentLimit()?'R$ '+currentLimit().toLocaleString('pt-BR'):'sem limite definido'}`, 'success');
+  }
+  const limitTitle = document.querySelector('.limit-title');
+  if(limitTitle){
+    limitTitle.textContent = `🏛️ ${getBusinessLabel(state.businessType)} — ${new Date().getFullYear()}`;
   }
 }
 function changePassword(){
