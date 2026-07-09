@@ -317,6 +317,7 @@ input[type="checkbox"]{border-radius:4px}
       <div class="nav-item" onclick="navigate('sales')"><span class="nav-icon">🛒</span><span class="nav-label">Vendas</span></div>
       <div class="nav-item" onclick="navigate('cashflow')"><span class="nav-icon">💰</span><span class="nav-label">Fluxo de Caixa</span></div>
       <div class="nav-item" onclick="navigate('reports')"><span class="nav-icon">📈</span><span class="nav-label">Relatórios</span></div>
+      <div class="nav-item" onclick="navigate('notes')"><span class="nav-icon">📝</span><span class="nav-label">Notas</span></div>
       <div class="nav-item" onclick="navigate('settings')"><span class="nav-icon">⚙️</span><span class="nav-label">Configurações</span></div>
       <div class="nav-item" id="nav-adminseed" style="display:none" onclick="navigate('adminseed')"><span class="nav-icon">🛠️</span><span class="nav-label">Admin (dados demo)</span></div>
     </div>
@@ -578,12 +579,12 @@ function logout(){
 // ══════════════════════════════════════
 // NAV
 // ══════════════════════════════════════
-const pageNames={dashboard:'Dashboard',clients:'Clientes',products:'Produtos & Serviços',sales:'Vendas',cashflow:'Fluxo de Caixa',reports:'Relatórios',settings:'Configurações',adminseed:'Admin (dados demo)'};
+const pageNames={dashboard:'Dashboard',clients:'Clientes',products:'Produtos & Serviços',sales:'Vendas',cashflow:'Fluxo de Caixa',reports:'Relatórios',notes:'Notas & Lembretes',settings:'Configurações',adminseed:'Admin (dados demo)'};
 async function navigate(page){
   state.page=page;
   document.getElementById('page-title').textContent=pageNames[page];
   document.querySelectorAll('.nav-item').forEach(el=>el.classList.remove('active'));
-  const idx=['dashboard','clients','products','sales','cashflow','reports','settings','adminseed'].indexOf(page);
+  const idx=['dashboard','clients','products','sales','cashflow','reports','notes','settings','adminseed'].indexOf(page);
   if(idx>=0)document.querySelectorAll('.nav-item')[idx].classList.add('active');
   document.getElementById('sidebar').classList.remove('mobile-open');
   await renderPage(page);
@@ -641,7 +642,7 @@ async function renderPage(page){
   if(page==='dashboard') await Promise.all([loadDashboardStats(), loadSales(), loadCashflow()]);
   if(page==='reports')   await Promise.all([loadSales(), loadProducts(), loadCashflow(), loadDashboardStats(), loadRevenueHistory()]);
   ({dashboard:renderDashboard,clients:renderClients,products:renderProducts,
-    sales:renderSales,cashflow:renderCashflow,reports:renderReports,settings:renderSettings,adminseed:renderAdminSeed}
+    sales:renderSales,cashflow:renderCashflow,reports:renderReports,notes:renderNotes,settings:renderSettings,adminseed:renderAdminSeed}
   [page]||renderDashboard)(el);
 }
 
@@ -2598,6 +2599,14 @@ async function saveProfileAsync(payload){
   state.businessType = data.user.business_type || 'MEI';
   document.getElementById('user-badge').textContent=(data.user.name||'U')[0].toUpperCase();
   toast('Dados da conta salvos! ✅','success');
+  // Se o tipo de empresa mudou, atualiza o dashboard imediatamente
+  // (sem navegar — só re-renderiza se já estiver na dashboard)
+  if(state.page === 'dashboard'){
+    renderDashboard(document.getElementById('content'));
+  } else {
+    // Mostra indicação visual de que a barra de limite foi atualizada
+    toast(`Tipo atualizado para ${getBusinessLabel(state.businessType)} — limite ${currentLimit()?'R$ '+currentLimit().toLocaleString('pt-BR'):'sem limite definido'}`, 'success');
+  }
 }
 function changePassword(){
   const current=document.getElementById('pw-current').value;
@@ -2624,6 +2633,142 @@ async function changePasswordAsync(current_password,new_password){
 // ══════════════════════════════════════
 // ADMIN — DADOS DE DEMONSTRAÇÃO (só aparece/funciona para a conta demo)
 // ══════════════════════════════════════
+// ══════════════════════════════════════
+// NOTAS & LEMBRETES
+// ══════════════════════════════════════
+function renderNotes(el){
+  // Carrega notas salvas do localStorage
+  const saved = JSON.parse(localStorage.getItem('mei_notes') || '[]');
+  el.innerHTML = `
+    <div style="max-width:800px">
+      <div class="section-header" style="margin-bottom:16px">
+        <span class="section-title">📝 Notas & Lembretes</span>
+        <button class="btn btn-primary btn-sm" onclick="addNote()">+ Nova Nota</button>
+      </div>
+      <div id="notes-list">
+        ${renderNotesList(saved)}
+      </div>
+    </div>`;
+}
+
+function renderNotesList(notes){
+  if(!notes.length) return `
+    <div class="card" style="text-align:center;padding:48px 24px;color:var(--muted)">
+      <div style="font-size:40px;margin-bottom:12px">📝</div>
+      <div style="font-size:16px;font-weight:600;margin-bottom:6px">Nenhuma nota ainda</div>
+      <div style="font-size:13px">Clique em "+ Nova Nota" para criar sua primeira anotação.</div>
+    </div>`;
+  return notes.map((note,i) => `
+    <div class="card" style="margin-bottom:12px;border-left:4px solid ${note.color||'var(--blue-l)'}">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+            <strong style="font-size:15px">${escHtml(note.title||'Sem título')}</strong>
+            <span style="font-size:11px;color:var(--muted)">${new Date(note.ts).toLocaleString('pt-BR')}</span>
+            ${note.pinned?'<span style="font-size:11px;background:var(--amber-x);color:var(--amber);padding:2px 8px;border-radius:99px">📌 Fixada</span>':''}
+          </div>
+          <div style="font-size:13px;color:var(--text);white-space:pre-wrap;word-break:break-word;line-height:1.6">${escHtml(note.content||'')}</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0">
+          <button class="btn btn-ghost btn-sm" onclick="editNote(${i})" title="Editar">✏️</button>
+          <button class="btn btn-ghost btn-sm" onclick="togglePin(${i})" title="${note.pinned?'Desafixar':'Fixar'}">📌</button>
+          <button class="btn btn-sm" style="background:var(--red-x);color:var(--red)" onclick="deleteNote(${i})" title="Excluir">🗑️</button>
+        </div>
+      </div>
+    </div>`).join('');
+}
+
+function escHtml(str){
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function getNotes(){ return JSON.parse(localStorage.getItem('mei_notes')||'[]'); }
+function saveNotes(notes){ localStorage.setItem('mei_notes', JSON.stringify(notes)); }
+
+const NOTE_COLORS = [
+  {val:'var(--blue-l)',  label:'🔵 Azul'},
+  {val:'var(--green-l)', label:'🟢 Verde'},
+  {val:'var(--amber)',   label:'🟡 Amarelo'},
+  {val:'var(--red-l)',   label:'🔴 Vermelho'},
+  {val:'var(--purple)',  label:'🟣 Roxo'},
+];
+
+function openNoteModal(note={}, idx=null){
+  openModal(`
+    <div class="modal-title">${idx!==null?'✏️ Editar Nota':'📝 Nova Nota'}</div>
+    <div class="form-group">
+      <label>Título</label>
+      <input id="note-title" value="${escHtml(note.title||'')}" placeholder="Ex: Lembrete, Ideia, Tarefa..."/>
+    </div>
+    <div class="form-group">
+      <label>Conteúdo — cole textos, links, instruções, o que quiser</label>
+      <textarea id="note-content" rows="8" placeholder="Cole aqui qualquer texto, link, observação..." style="font-family:monospace;font-size:13px;resize:vertical">${escHtml(note.content||'')}</textarea>
+    </div>
+    <div class="form-group">
+      <label>Cor da nota</label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        ${NOTE_COLORS.map(c=>`
+          <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px">
+            <input type="radio" name="note-color" value="${c.val}" ${(note.color||'var(--blue-l)')===c.val?'checked':''}/>
+            ${c.label}
+          </label>`).join('')}
+      </div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-ghost" onclick="_closeModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveNote(${idx!==null?idx:'null'})">💾 Salvar</button>
+    </div>`, true);
+}
+
+function addNote(){ openNoteModal(); }
+
+function editNote(i){
+  const notes = getNotes();
+  openNoteModal(notes[i], i);
+}
+
+function saveNote(idx){
+  const title   = document.getElementById('note-title').value.trim();
+  const content = document.getElementById('note-content').value;
+  const color   = document.querySelector('input[name="note-color"]:checked')?.value || 'var(--blue-l)';
+  if(!title && !content) return toast('Adicione um título ou conteúdo','error');
+  const notes = getNotes();
+  const note = { title, content, color, ts: new Date().toISOString(), pinned: false };
+  if(idx !== null && idx !== 'null' && idx !== undefined){
+    note.pinned = notes[idx]?.pinned || false;
+    note.ts = notes[idx]?.ts || note.ts;
+    notes[idx] = note;
+  } else {
+    notes.unshift(note);
+  }
+  saveNotes(notes);
+  _closeModal();
+  toast('Nota salva!','success');
+  // Re-renderiza a lista
+  const listEl = document.getElementById('notes-list');
+  if(listEl) listEl.innerHTML = renderNotesList(getNotes());
+}
+
+function togglePin(i){
+  const notes = getNotes();
+  notes[i].pinned = !notes[i].pinned;
+  // Fixadas vão para o topo
+  notes.sort((a,b) => (b.pinned?1:0)-(a.pinned?1:0));
+  saveNotes(notes);
+  const listEl = document.getElementById('notes-list');
+  if(listEl) listEl.innerHTML = renderNotesList(getNotes());
+}
+
+function deleteNote(i){
+  if(!confirm('Excluir esta nota?')) return;
+  const notes = getNotes();
+  notes.splice(i,1);
+  saveNotes(notes);
+  const listEl = document.getElementById('notes-list');
+  if(listEl) listEl.innerHTML = renderNotesList(getNotes());
+  toast('Nota excluída');
+}
+
 function renderAdminSeed(el){
   const isDemo = (state.user?.email||'').toLowerCase() === 'demo@meifacil.com.br';
   if(!isDemo){
