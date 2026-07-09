@@ -1224,7 +1224,7 @@ function openSaleModal(){
             <!-- Select tradicional -->
             <select id="add-product-select" onchange="onSelectProduct(this.value)" style="width:100%">
               <option value="">📋 Selecionar da lista...</option>
-              ${state.products.map(p=>`<option value="${p.id}">${p.name}${p.variations&&p.variations.length?' (${p.variations.length} var.)':' — '+R(p.price)}</option>`).join('')}
+              ${state.products.map(p=>`<option value="${p.id}">${p.name}${p.variations&&p.variations.length>0?' ('+p.variations.length+' var.)':' — '+R(p.price)}</option>`).join('')}
             </select>
           </div>
           <!-- Linha 2: select de variação (aparece quando necessário) -->
