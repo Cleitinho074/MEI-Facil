@@ -285,7 +285,22 @@ input[type="checkbox"]{border-radius:4px}
     <div id="auth-register" style="display:none">
       <div class="form-group"><label>Nome completo</label><input type="text" id="reg-name" placeholder="João da Silva"/></div>
       <div class="form-group"><label>E-mail</label><input type="email" id="reg-email" placeholder="seu@email.com"/></div>
-      <div class="form-group"><label>CPF/CNPJ</label><input type="text" id="reg-cpf" placeholder="000.000.000-00"/></div>
+      <div class="form-group"><label>CPF/CNPJ</label><input type="text" id="reg-cpf" placeholder="000.000.000-00 ou 00.000.000/0001-00"/></div>
+      <div class="form-group">
+        <label>Tipo de empresa / enquadramento</label>
+        <select id="reg-business-type" onchange="onRegBusinessTypeChange()" style="width:100%">
+          <option value="MEI">MEI — Microempreendedor Individual (limite R$ 81.000/ano)</option>
+          <option value="ME">ME — Microempresa (limite R$ 360.000/ano)</option>
+          <option value="EPP">EPP — Empresa de Pequeno Porte (limite R$ 4.800.000/ano)</option>
+          <option value="SIMPLES">Simples Nacional (outros portes)</option>
+          <option value="LTDA">LTDA — Sociedade Limitada</option>
+          <option value="AUTONOMO">Profissional Autônomo (sem CNPJ)</option>
+          <option value="OUTRO">Outro</option>
+        </select>
+        <div id="reg-business-desc" style="font-size:12px;color:var(--green-l);margin-top:4px;padding:6px 10px;background:var(--green-x);border-radius:6px">
+          ✅ Limite anual de faturamento: R$ 81.000
+        </div>
+      </div>
       <div class="form-group"><label>Senha</label><input type="password" id="reg-pass" placeholder="Mínimo 8 caracteres"/></div>
       <button class="btn btn-primary auth-btn" onclick="doRegister()">Criar conta grátis</button>
     </div>
@@ -346,7 +361,19 @@ window.addEventListener('DOMContentLoaded', () => {
 // ══════════════════════════════════════
 // STATE
 // ══════════════════════════════════════
-const MEI_LIMIT = 81000;
+const MEI_LIMIT = 81000; // fallback padrão
+const BUSINESS_TYPES = {
+  'MEI':      { label:'MEI — Microempreendedor Individual', limit:81000,   color:'green',  desc:'Limite anual de faturamento: R$ 81.000' },
+  'ME':       { label:'ME — Microempresa',                  limit:360000,  color:'blue',   desc:'Limite anual de faturamento: R$ 360.000 (Simples Nacional)' },
+  'EPP':      { label:'EPP — Empresa de Pequeno Porte',     limit:4800000, color:'purple', desc:'Limite anual de faturamento: R$ 4.800.000' },
+  'SIMPLES':  { label:'Simples Nacional (outros portes)',    limit:4800000, color:'amber',  desc:'Regime tributário diferenciado' },
+  'LTDA':     { label:'LTDA — Sociedade Limitada',          limit:null,    color:'muted',  desc:'Sem limite de faturamento definido' },
+  'AUTONOMO': { label:'Profissional Autônomo (sem CNPJ)',    limit:null,    color:'muted',  desc:'Sem limite de faturamento por CNPJ' },
+  'OUTRO':    { label:'Outro tipo de empresa',              limit:null,    color:'muted',  desc:'Configure o limite manualmente se necessário' },
+};
+function getBusinessLimit(type){ return BUSINESS_TYPES[type]?.limit || MEI_LIMIT; }
+function currentLimit(){ return getBusinessLimit(state.businessType||'MEI') || MEI_LIMIT; }
+function getBusinessLabel(type){ return BUSINESS_TYPES[type]?.label || 'MEI'; }
 
 const PAY_METHODS = {
   dinheiro: { label:'Dinheiro',        icon:'💵', hasFee:false },
@@ -400,6 +427,7 @@ async function loadDashboardStats(){
   if(data){
     state.yearRevenue = +data.year_revenue;
     state.meiLimit = +data.mei_limit;
+    state.businessType = data.business_type || state.user?.business_type || 'MEI';
     state.dashboardStats = data;
   }
 }
@@ -626,27 +654,28 @@ function renderDashboard(el){
   const totalProfit=paidSales.reduce((a,s)=>a+s.profit,0);
   const totalOut=state.cashflow.filter(c=>c.type==='out').reduce((a,c)=>a+c.value,0);
   const totalIn=state.cashflow.filter(c=>c.type==='in').reduce((a,c)=>a+c.value,0);
-  const pct=Math.min(100,(state.yearRevenue/MEI_LIMIT)*100);
-  const remaining=MEI_LIMIT-state.yearRevenue;
+  const LIMIT = currentLimit();
+  const pct=Math.min(100,(state.yearRevenue/LIMIT)*100);
+  const remaining=LIMIT-state.yearRevenue;
   const alertClass=pct>=90?'danger':pct>=75?'warning':'';
   const alertMsg=pct>=90
-    ?`⚠️ ATENÇÃO: Você está a apenas ${R(remaining)} do limite MEI. Consulte um contador urgentemente.`
-    :pct>=75?`🔔 Atenção: Você atingiu ${pct.toFixed(0)}% do limite anual. Fique atento.`:'';
+    ?`⚠️ ATENÇÃO: Você está a apenas ${R(remaining)} do limite. Consulte um contador urgentemente.`
+    :pct>=75?`🔔 Atenção: Você atingiu ${pct.toFixed(0)}% do limite anual (${R(LIMIT)}). Fique atento.`:'';
 
   const payBreakdown={};
   paidSales.forEach(s=>{payBreakdown[s.payMethod]=(payBreakdown[s.payMethod]||0)+s.netTotal;});
   const totalFees=paidSales.reduce((a,s)=>a+s.feeValue,0);
 
   el.innerHTML=`
-    <div class="limit-card">
+    <div class="limit-card" title="${getBusinessLabel(state.businessType||'MEI')}">
       <div class="limit-header">
-        <span class="limit-title">🏛️ Limite Anual MEI ${new Date().getFullYear()}</span>
+        <span class="limit-title">🏛️ ${getBusinessLabel(state.businessType||'MEI')} — ${new Date().getFullYear()}</span>
         <span class="limit-pct ${pct>=90?'red':pct>=75?'amber':'green'}">${pct.toFixed(1)}%</span>
       </div>
       <div class="progress-track"><div class="progress-fill ${alertClass}" style="width:${pct}%"></div></div>
       <div class="limit-info">
         <span>Faturado: <strong>${R(state.yearRevenue)}</strong></span>
-        <span>Limite: <strong>${R(MEI_LIMIT)}</strong></span>
+        <span>Limite: <strong>${R(LIMIT)}</strong></span>
         <span>Restante: <strong>${R(remaining)}</strong></span>
         <button class="btn btn-ghost btn-sm" onclick="openEditRevenueModal()" style="margin-left:auto">✏️ Corrigir faturamento</button>
       </div>
@@ -2000,7 +2029,8 @@ function openClientDetailModal(clientId){
     </div>`,true);
 }
 function reportMEI(){
-  const pct=(state.yearRevenue/MEI_LIMIT*100);
+  const LIMIT = currentLimit();
+  const pct=(state.yearRevenue/LIMIT*100);
   const meses=new Date().getMonth()+1;
   const projectedAnnual=(state.yearRevenue/meses)*12;
   return `
@@ -2013,13 +2043,13 @@ function reportMEI(){
       <div style="margin-top:8px;font-size:13px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:4px">
         <span>Faturado: <strong>${R(state.yearRevenue)}</strong></span>
         <span>${pct.toFixed(1)}% utilizado</span>
-        <span>Limite: <strong>${R(MEI_LIMIT)}</strong></span>
+        <span>Limite: <strong>${R(LIMIT)}</strong></span>
       </div>
     </div>
     <div class="cards-grid">
       <div class="card card-metric"><div class="card-label">Faturamento anual</div><div class="card-value blue">${R(state.yearRevenue)}</div></div>
-      <div class="card card-metric"><div class="card-label">Projeção anual</div><div class="card-value ${projectedAnnual>MEI_LIMIT?'red':'green'}">${R(projectedAnnual)}</div><div class="card-sub">${projectedAnnual>MEI_LIMIT?'⚠️ Pode ultrapassar!':'✅ Dentro do limite'}</div></div>
-      <div class="card card-metric"><div class="card-label">Restante</div><div class="card-value ${(MEI_LIMIT-state.yearRevenue)<10000?'red':'green'}">${R(MEI_LIMIT-state.yearRevenue)}</div></div>
+      <div class="card card-metric"><div class="card-label">Projeção anual</div><div class="card-value ${projectedAnnual>LIMIT?'red':'green'}">${R(projectedAnnual)}</div><div class="card-sub">${projectedAnnual>LIMIT?'⚠️ Pode ultrapassar!':'✅ Dentro do limite'}</div></div>
+      <div class="card card-metric"><div class="card-label">Restante</div><div class="card-value ${(LIMIT-state.yearRevenue)<10000?'red':'green'}">${R(LIMIT-state.yearRevenue)}</div></div>
     </div>
     <div class="card" style="margin-top:16px">
       <div style="font-weight:700;margin-bottom:10px">📋 Histórico de ajustes do faturamento</div>
@@ -2425,11 +2455,11 @@ function gerarPDF(){
       <table>
         <tr><th>Indicador</th><th>Valor</th></tr>
         <tr><td>Faturamento Acumulado no Ano</td><td>${R(state.yearRevenue)}</td></tr>
-        <tr><td>Limite Anual MEI</td><td>${R(MEI_LIMIT)}</td></tr>
+        <tr><td>Limite Anual MEI</td><td>${R(LIMIT)}</td></tr>
         <tr><td>Percentual Utilizado</td><td>${pctMEI}%</td></tr>
-        <tr><td>Saldo Disponível</td><td>${R(MEI_LIMIT-state.yearRevenue)}</td></tr>
+        <tr><td>Saldo Disponível</td><td>${R(LIMIT-state.yearRevenue)}</td></tr>
         <tr><td>Projeção Anual (com base nos meses decorridos)</td><td>${R(proj)}</td></tr>
-        <tr><td>Situação</td><td>${proj>MEI_LIMIT?'⚠️ RISCO DE DESENQUADRAMENTO':'✅ DENTRO DO LIMITE'}</td></tr>
+        <tr><td>Situação</td><td>${proj>LIMIT?'⚠️ RISCO DE DESENQUADRAMENTO':'✅ DENTRO DO LIMITE'}</td></tr>
       </table>
       <h2 class="abnt-section">2 FATURAMENTO POR MÊS</h2>
       <table>
@@ -2505,8 +2535,17 @@ function renderSettings(el){
         <div class="form-group"><label>Nome completo</label><input value="${state.user?.name||''}" id="set-name"/></div>
         <div class="form-group"><label>E-mail</label><input type="email" value="${state.user?.email||''}" id="set-email" disabled style="background:var(--bg);color:var(--muted)"/></div>
         <div class="form-row">
-          <div class="form-group"><label>CNPJ MEI</label><input value="${state.user?.cpf_cnpj||''}" placeholder="00.000.000/0001-00" id="set-cnpj"/></div>
+          <div class="form-group"><label>CNPJ / CPF</label><input value="${state.user?.cpf_cnpj||''}" placeholder="00.000.000/0001-00" id="set-cnpj"/></div>
           <div class="form-group"><label>Razão Social</label><input value="${state.user?.razao_social||''}" placeholder="João da Silva 00000000001" id="set-razao"/></div>
+        </div>
+        <div class="form-group">
+          <label>Tipo de empresa / enquadramento</label>
+          <select id="set-business-type" onchange="onSettingsBusinessTypeChange()">
+            ${Object.entries(BUSINESS_TYPES).map(([k,v])=>`<option value="${k}" ${(state.user?.business_type||'MEI')===k?'selected':''}>${v.label}</option>`).join('')}
+          </select>
+          <div id="settings-business-desc" style="font-size:12px;color:var(--green-l);margin-top:4px;padding:6px 10px;background:var(--green-x);border-radius:6px">
+            ${BUSINESS_TYPES[state.user?.business_type||'MEI']?.desc || ''}
+          </div>
         </div>
         <button class="btn btn-primary" onclick="saveProfile()">💾 Salvar</button>
       </div>
@@ -2548,13 +2587,15 @@ function saveProfile(){
   const name=document.getElementById('set-name').value.trim();
   const cpf_cnpj=document.getElementById('set-cnpj').value.trim();
   const razao_social=document.getElementById('set-razao').value.trim();
+  const business_type=document.getElementById('set-business-type')?.value||'MEI';
   if(!name)return toast('Nome é obrigatório','error');
-  saveProfileAsync({name,cpf_cnpj,razao_social});
+  saveProfileAsync({name,cpf_cnpj,razao_social,business_type});
 }
 async function saveProfileAsync(payload){
   const data = await apiCall('/api/auth/profile','PUT',payload);
   if(!data)return;
   state.user={...state.user,...data.user};
+  state.businessType = data.user.business_type || 'MEI';
   document.getElementById('user-badge').textContent=(data.user.name||'U')[0].toUpperCase();
   toast('Dados da conta salvos! ✅','success');
 }
