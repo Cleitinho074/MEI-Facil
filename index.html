@@ -1211,17 +1211,33 @@ function openSaleModal(){
         <div class="sale-item-row sale-item-header"><span>Produto/Serviço</span><span>Qtd</span><span>Unit. R$</span><span>Subtotal</span><span></span></div>
         <div id="sale-rows"></div>
         <div class="sale-item-add" style="flex-direction:column;gap:8px">
-          <div style="position:relative;width:100%">
-            <input type="text" id="add-product-search" placeholder="🔍 Buscar produto ou variação..." autocomplete="off"
-              oninput="renderProductSearchResults()" onfocus="renderProductSearchResults()"
-              onblur="setTimeout(()=>{const r=document.getElementById('product-search-results'); if(r)r.style.display='none';},150)"
-              style="width:100%"/>
-            <div id="product-search-results" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:50;background:var(--card);border:1.5px solid var(--border);border-radius:8px;max-height:240px;overflow-y:auto;margin-top:4px;box-shadow:var(--shadow)"></div>
+          <!-- Linha 1: busca + select -->
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <!-- Campo de busca com dropdown -->
+            <div style="position:relative">
+              <input type="text" id="add-product-search" placeholder="🔍 Buscar produto..." autocomplete="off"
+                oninput="renderProductSearchResults()" onfocus="renderProductSearchResults()"
+                onblur="setTimeout(()=>{const r=document.getElementById('product-search-results'); if(r)r.style.display='none';},150)"
+                style="width:100%"/>
+              <div id="product-search-results" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:50;background:var(--card);border:1.5px solid var(--border);border-radius:8px;max-height:220px;overflow-y:auto;margin-top:4px;box-shadow:var(--shadow)"></div>
+            </div>
+            <!-- Select tradicional -->
+            <select id="add-product-select" onchange="onSelectProduct(this.value)" style="width:100%">
+              <option value="">📋 Selecionar da lista...</option>
+              ${state.products.map(p=>`<option value="${p.id}">${p.name}${p.variations&&p.variations.length?' (${p.variations.length} var.)':' — '+R(p.price)}</option>`).join('')}
+            </select>
           </div>
+          <!-- Linha 2: select de variação (aparece quando necessário) -->
           <select id="add-variation" style="width:100%;display:none" onchange="onVariationSelectChange()">
             <option value="">Escolha a variação...</option>
           </select>
-          <button class="btn btn-primary btn-sm" style="width:100%" onclick="addSaleItem()">+ Adicionar item</button>
+          <!-- Linha 3: produto selecionado + botão -->
+          <div style="display:flex;gap:8px;align-items:center">
+            <div id="selected-product-badge" style="flex:1;font-size:12px;color:var(--muted);padding:6px 0">
+              Nenhum produto selecionado
+            </div>
+            <button class="btn btn-primary btn-sm" onclick="addSaleItem()">+ Adicionar</button>
+          </div>
         </div>
       </div>
     </div>
@@ -1315,13 +1331,23 @@ function renderProductSearchResults(){
   box.style.display = 'block';
 }
 
+// Usuário escolheu produto pelo select tradicional
+function onSelectProduct(pid){
+  if(!pid) return;
+  selectSaleProduct(pid);
+  // Limpa o select para não ficar "preso" na opção
+  document.getElementById('add-product-select').value = '';
+}
+
 // Usuário clicou num resultado da busca
 function selectSaleProduct(pid){
   const p = state.products.find(x=>x.id===pid);
   if(!p) return;
   selectedSaleProduct = p;
-  document.getElementById('add-product-search').value = p.name;
+  document.getElementById('add-product-search').value = '';
   document.getElementById('product-search-results').style.display = 'none';
+  const badge = document.getElementById('selected-product-badge');
+  if(badge) badge.innerHTML = `<span style="background:var(--blue-x);color:var(--blue-l);padding:3px 10px;border-radius:20px;font-weight:600">✅ ${p.name}</span>`;
 
   const varSel = document.getElementById('add-variation');
   const variations = p.variations || [];
@@ -1370,7 +1396,7 @@ function addSaleItem(){
   }
   if(p.type==='product' && estoqueDisp !== null){
     const noCarrinho = saleItems.filter(i=>i.productId===p.id && i.name===itemName).reduce((a,i)=>a+i.qty,0);
-    if(noCarrinho >= estoqueDisp) return toast(`Estoque insuficiente para "${itemName}" (${estoqueDisp} un disponíveis)`,'error');
+    if(noCarrinho + 1 > estoqueDisp) return toast(`Estoque insuficiente para "${itemName}" (${estoqueDisp} un disponíveis, ${noCarrinho} já no carrinho)`,'error');
   }
 
   // Adiciona ou incrementa
@@ -1385,6 +1411,9 @@ function addSaleItem(){
   // Reseta a busca e os selects
   selectedSaleProduct = null;
   document.getElementById('add-product-search').value = '';
+  const badge = document.getElementById('selected-product-badge');
+  if(badge) badge.innerHTML = 'Nenhum produto selecionado';
+  if(badge) badge.style.color = 'var(--muted)';
   varSel.style.display = 'none';
   varSel.innerHTML = '<option value="">Escolha a variação...</option>';
 
@@ -1526,6 +1555,19 @@ async function saveSaleAsync(payload, btn){
     }
     if(PAY_METHODS[payload.pay_method].hasFee)state.payFees[payload.pay_method]=payload.fee_pct;
     _closeModal();
+    // Atualiza estoque local no state para refletir a baixa imediatamente
+    payload.items.forEach(it => {
+      const prod = state.products.find(p => p.id === it.product_id);
+      if(!prod || prod.type !== 'product') return;
+      if(it.variation_name && prod.variations){
+        const v = prod.variations.find(v => v.name === it.variation_name);
+        if(v && v.stock !== null && v.stock !== undefined){
+          v.stock = Math.max(0, (+v.stock||0) - it.qty);
+        }
+      } else if(prod.stock !== null && prod.stock !== undefined){
+        prod.stock = Math.max(0, (+prod.stock||0) - it.qty);
+      }
+    });
     toast(`Venda registrada! ${R(data.net_total)} via ${payLabel(payload.pay_method)}`,'success');
     await Promise.all([loadSales(), loadProducts(), loadDashboardStats()]);
     renderSales(document.getElementById('content'));
