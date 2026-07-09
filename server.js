@@ -169,12 +169,18 @@ const auth = (req, res, next) => {
   const token = req.headers.authorization?.replace('Bearer ', '');
   if (!token) return res.status(401).json({ error: 'Token não fornecido' });
   try {
-    req.userId = jwt.verify(token, process.env.JWT_SECRET || 'dev-secret-change-me').id;
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'dev-secret-change-me');
+    req.userId = decoded.id;
+    req.userBusinessType = decoded.business_type || 'MEI';
     next();
   } catch { res.status(401).json({ error: 'Token inválido' }); }
 };
 
-const signToken = (id) => jwt.sign({ id }, process.env.JWT_SECRET || 'dev-secret-change-me', { expiresIn: '7d' });
+const signToken = (id, business_type='MEI') => jwt.sign(
+  { id, business_type },
+  process.env.JWT_SECRET || 'dev-secret-change-me',
+  { expiresIn: '7d' }
+);
 
 // ── Helper ──────────────────────────────────────────────────────
 const Q = (text, params) => db.query(text, params);
@@ -197,7 +203,7 @@ app.post('/api/auth/register', async (req, res) => {
       `INSERT INTO users(name,email,password_hash,cpf_cnpj,business_type) VALUES($1,$2,$3,$4,$5) RETURNING id,name,email,cpf_cnpj,razao_social,business_type,store_name`,
       [name, email.toLowerCase(), hash, cpf_cnpj || null, business_type || 'MEI']
     );
-    res.status(201).json({ token: signToken(rows[0].id), user: rows[0] });
+    res.status(201).json({ token: signToken(rows[0].id, rows[0].business_type||'MEI'), user: rows[0] });
   } catch (e) { console.error(e); res.status(500).json({ error: 'Erro ao criar conta' }); }
 });
 
@@ -209,7 +215,7 @@ app.post('/api/auth/login', async (req, res) => {
     if (!rows.length || !await bcrypt.compare(password, rows[0].password_hash))
       return res.status(401).json({ error: 'E-mail ou senha incorretos' });
     const { password_hash, ...user } = rows[0];
-    res.json({ token: signToken(user.id), user });
+    res.json({ token: signToken(user.id, user.business_type||'MEI'), user });
   } catch (e) { console.error(e); res.status(500).json({ error: 'Erro no login' }); }
 });
 
@@ -247,7 +253,9 @@ app.put('/api/auth/profile', auth, async (req, res) => {
       `UPDATE users SET name=$1, cpf_cnpj=$2, razao_social=$3, store_name=$4, business_type=$5, updated_at=NOW() WHERE id=$6 RETURNING id, name, email, cpf_cnpj, razao_social, store_name, business_type`,
       [name.trim(), cpf_cnpj || null, razao_social || null, store_name || null, business_type || 'MEI', req.userId]
     );
-    res.json({ user: rows[0] });
+    // Retorna novo token com business_type atualizado para o frontend renovar
+    const newToken = signToken(req.userId, rows[0].business_type || 'MEI');
+    res.json({ user: rows[0], token: newToken });
   } catch (e) { res.status(500).json({ error: 'Erro ao atualizar perfil' }); }
 });
 
