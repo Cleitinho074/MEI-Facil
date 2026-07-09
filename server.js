@@ -42,6 +42,7 @@ const initDB = async () => {
         cpf_cnpj VARCHAR(50),
         razao_social VARCHAR(255),
         store_name VARCHAR(150),
+        business_type VARCHAR(30) DEFAULT 'MEI',
         updated_at TIMESTAMP DEFAULT NOW(),
         created_at TIMESTAMP DEFAULT NOW()
       );
@@ -130,6 +131,7 @@ const initDB = async () => {
     `);
     // Migrações seguras para bancos já existentes
     await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS store_name VARCHAR(150);`);
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS business_type VARCHAR(30) DEFAULT 'MEI';`);
     await client.query(`ALTER TABLE sales ADD COLUMN IF NOT EXISTS sale_time VARCHAR(5);`);
     await client.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS variations JSONB DEFAULT '[]'::jsonb;`);
     await client.query(`ALTER TABLE sale_items ADD COLUMN IF NOT EXISTS variation_name VARCHAR(255);`);
@@ -183,7 +185,7 @@ const Q = (text, params) => db.query(text, params);
 
 app.post('/api/auth/register', async (req, res) => {
   try {
-    const { name, email, password, cpf_cnpj } = req.body;
+    const { name, email, password, cpf_cnpj, business_type } = req.body;
     if (!name || !email || !password) return res.status(400).json({ error: 'Campos obrigatórios: name, email, password' });
     if (password.length < 8) return res.status(400).json({ error: 'Senha deve ter no mínimo 8 caracteres' });
 
@@ -192,8 +194,8 @@ app.post('/api/auth/register', async (req, res) => {
 
     const hash = await bcrypt.hash(password, 12);
     const { rows } = await Q(
-      `INSERT INTO users(name,email,password_hash,cpf_cnpj) VALUES($1,$2,$3,$4) RETURNING id,name,email,cpf_cnpj,razao_social`,
-      [name, email.toLowerCase(), hash, cpf_cnpj]
+      `INSERT INTO users(name,email,password_hash,cpf_cnpj,business_type) VALUES($1,$2,$3,$4,$5) RETURNING id,name,email,cpf_cnpj,razao_social,business_type,store_name`,
+      [name, email.toLowerCase(), hash, cpf_cnpj || null, business_type || 'MEI']
     );
     res.status(201).json({ token: signToken(rows[0].id), user: rows[0] });
   } catch (e) { console.error(e); res.status(500).json({ error: 'Erro ao criar conta' }); }
@@ -213,7 +215,7 @@ app.post('/api/auth/login', async (req, res) => {
 
 app.get('/api/auth/me', auth, async (req, res) => {
   try {
-    const { rows } = await Q('SELECT id, name, email, cpf_cnpj, razao_social, store_name FROM users WHERE id=$1', [req.userId]);
+    const { rows } = await Q('SELECT id, name, email, cpf_cnpj, razao_social, store_name, business_type FROM users WHERE id=$1', [req.userId]);
     if (!rows.length) return res.status(404).json({ error: 'Usuário não encontrado' });
     res.json({ user: rows[0] });
   } catch (e) { res.status(500).json({ error: 'Erro ao buscar usuário' }); }
@@ -239,11 +241,11 @@ app.patch('/api/auth/password', auth, async (req, res) => {
 
 app.put('/api/auth/profile', auth, async (req, res) => {
   try {
-    const { name, cpf_cnpj, razao_social, store_name } = req.body;
+    const { name, cpf_cnpj, razao_social, store_name, business_type } = req.body;
     if (!name || !name.trim()) return res.status(400).json({ error: 'Nome é obrigatório' });
     const { rows } = await Q(
-      `UPDATE users SET name=$1, cpf_cnpj=$2, razao_social=$3, store_name=$4, updated_at=NOW() WHERE id=$5 RETURNING id, name, email, cpf_cnpj, razao_social, store_name`,
-      [name.trim(), cpf_cnpj || null, razao_social || null, store_name || null, req.userId]
+      `UPDATE users SET name=$1, cpf_cnpj=$2, razao_social=$3, store_name=$4, business_type=$5, updated_at=NOW() WHERE id=$6 RETURNING id, name, email, cpf_cnpj, razao_social, store_name, business_type`,
+      [name.trim(), cpf_cnpj || null, razao_social || null, store_name || null, business_type || 'MEI', req.userId]
     );
     res.json({ user: rows[0] });
   } catch (e) { res.status(500).json({ error: 'Erro ao atualizar perfil' }); }
@@ -427,11 +429,21 @@ app.get('/api/reports/dashboard', auth, async (req, res) => {
     Q(`SELECT COALESCE(SUM(total),0) total FROM sales WHERE user_id=$1 AND status='paid' AND EXTRACT(YEAR FROM sale_date)=EXTRACT(YEAR FROM NOW())`, [req.userId]),
     Q(`SELECT COALESCE(SUM(after_val - COALESCE(before_val,0)),0) total FROM revenue_audit WHERE user_id=$1 AND EXTRACT(YEAR FROM created_at)=EXTRACT(YEAR FROM NOW())`, [req.userId]),
   ]);
-  const MEI_LIMIT = 81000;
+  const BUSINESS_LIMITS = {
+    'MEI':        { limit: 81000,    label: 'Microempreendedor Individual (MEI)' },
+    'ME':         { limit: 360000,   label: 'Microempresa (ME)' },
+    'EPP':        { limit: 4800000,  label: 'Empresa de Pequeno Porte (EPP)' },
+    'SIMPLES':    { limit: 4800000,  label: 'Simples Nacional' },
+    'LTDA':       { limit: null,     label: 'Sociedade Limitada (LTDA)' },
+    'AUTONOMO':   { limit: null,     label: 'Profissional Autônomo' },
+    'OUTRO':      { limit: null,     label: 'Outro' },
+  };
+  const userType = req.userBusinessType || 'MEI';
+  const MEI_LIMIT = BUSINESS_LIMITS[userType]?.limit || 81000;
   const yr = +yearRev.rows[0].total + +auditAdj.rows[0].total;
   res.json({
     month_revenue: +rev.rows[0].total, month_expenses: +exp.rows[0].total, month_profit: +rev.rows[0].total - +exp.rows[0].total,
-    sales_count: +salesCount.rows[0].count, year_revenue: yr, mei_limit: MEI_LIMIT,
+    sales_count: +salesCount.rows[0].count, year_revenue: yr, mei_limit: MEI_LIMIT, business_type: userType,
     mei_pct: +(yr / MEI_LIMIT * 100).toFixed(2), mei_remaining: +(MEI_LIMIT - yr).toFixed(2)
   });
 });
