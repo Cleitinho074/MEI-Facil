@@ -1260,7 +1260,7 @@ function openSaleModal(){
                 oninput="renderProductSearchResults()" onfocus="renderProductSearchResults()"
                 onblur="setTimeout(()=>{const r=document.getElementById('product-search-results'); if(r)r.style.display='none';},150)"
                 style="width:100%"/>
-              <div id="product-search-results" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:50;background:var(--card);border:1.5px solid var(--border);border-radius:8px;max-height:220px;overflow-y:auto;margin-top:4px;box-shadow:var(--shadow)"></div>
+              <div id="product-search-results" style="display:none;position:fixed;z-index:2000;background:var(--card);border:1.5px solid var(--border);border-radius:8px;max-height:220px;overflow-y:auto;box-shadow:var(--shadow)"></div>
             </div>
             <!-- Select tradicional -->
             <select id="add-product-select" onchange="onSelectProduct(this.value)" style="width:100%">
@@ -1348,9 +1348,10 @@ let selectedSaleProduct = null; // produto atualmente escolhido no autocomplete 
 
 // Monta a lista de resultados clicáveis abaixo do campo de busca
 function renderProductSearchResults(){
-  const q = normalizeSearch(document.getElementById('add-product-search')?.value);
+  const input = document.getElementById('add-product-search');
+  const q = normalizeSearch(input?.value);
   const box = document.getElementById('product-search-results');
-  if(!box) return;
+  if(!box || !input) return;
   const matches = state.products.filter(p=>{
     const matchesProduct = normalizeSearch(p.name).includes(q);
     const matchesVariation = (p.variations||[]).some(v=>normalizeSearch(v.name).includes(q));
@@ -1369,7 +1370,26 @@ function renderProductSearchResults(){
       </div>`;
     }).join('');
   }
+
+  // Posiciona o dropdown com base na posição real do input na tela (fixed),
+  // pra não ser cortado por containers com overflow:hidden/auto (ex: o modal e a lista de itens)
+  const rect = input.getBoundingClientRect();
+  box.style.top   = (rect.bottom + 4) + 'px';
+  box.style.left  = rect.left + 'px';
+  box.style.width = rect.width + 'px';
   box.style.display = 'block';
+  attachSearchResultsScrollGuard();
+}
+
+// Fecha o dropdown se o usuário rolar a tela/modal (evita ele ficar "flutuando" fora do lugar)
+let _searchScrollGuardAttached = false;
+function attachSearchResultsScrollGuard(){
+  if(_searchScrollGuardAttached) return;
+  _searchScrollGuardAttached = true;
+  window.addEventListener('scroll', ()=>{
+    const box = document.getElementById('product-search-results');
+    if(box) box.style.display = 'none';
+  }, true);
 }
 
 // Usuário escolheu produto pelo select tradicional
