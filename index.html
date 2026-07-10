@@ -2587,6 +2587,9 @@ async function parseStockText(){
       return;
     }
 
+    if(data.method === 'ai') toast('Texto interpretado pela IA (formato não padrão) 🤖','success');
+    else toast(`${data.items.length} item(ns) interpretado(s) instantaneamente ⚡`,'success');
+
     renderStockPreview(data.items);
 
   } catch(e) {
