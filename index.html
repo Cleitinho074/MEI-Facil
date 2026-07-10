@@ -2571,7 +2571,6 @@ async function parseStockText(){
   btn.disabled = true;
   btn.textContent = '⏳ Interpretando...';
 
-  // Monta contexto com produtos existentes para ajudar a IA a mapear
   const existingProducts = state.products.map(p => ({
     id: p.id,
     name: p.name,
@@ -2580,54 +2579,15 @@ async function parseStockText(){
   }));
 
   try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 1000,
-        system: `Você é um assistente especialista em interpretação de listas de estoque para um sistema de gestão MEI brasileiro.
-Responda APENAS com JSON válido, sem texto extra, sem markdown, sem explicação.
-O JSON deve ser um array de objetos com esta estrutura:
-{
-  "name": "nome do produto",
-  "variationName": "nome da variação (ou null se não tiver)",
-  "qty": número inteiro,
-  "price": número decimal ou null se não informado,
-  "cost": número decimal ou null se não informado,
-  "matchedProductId": "id do produto existente ou null",
-  "matchedProductName": "nome do produto existente correspondente ou null"
-}
-Produtos existentes no sistema: ${JSON.stringify(existingProducts)}
-Tente encontrar correspondências com os produtos existentes pelo nome (mesmo que parcial ou abreviado).
-Se o produto tiver variação (ex: "capinha ip 13" pode ser variação "IP 13" do produto "Capinha"), informe em variationName.
-Se a quantidade não for informada, use 0.`,
-        messages: [{
-          role: 'user',
-          content: `Interprete este texto de estoque e retorne o JSON:
+    const data = await apiCall('/api/ai/interpret-stock', 'POST', { text, existingProducts });
 
-${text}`
-        }]
-      })
-    });
-
-    const data = await res.json();
-    const raw = data.content?.[0]?.text || '[]';
-
-    let items = [];
-    try { items = JSON.parse(raw); } catch(e) {
-      // tenta extrair JSON do texto
-      const match = raw.match(/\[[\s\S]*\]/);
-      if(match) items = JSON.parse(match[0]);
-    }
-
-    if(!Array.isArray(items) || items.length === 0){
+    if(!data || !Array.isArray(data.items) || data.items.length === 0){
       toast('Não consegui interpretar o texto. Tente ser mais específico.','error');
       btn.disabled = false; btn.textContent = '🔍 Interpretar Texto';
       return;
     }
 
-    renderStockPreview(items);
+    renderStockPreview(data.items);
 
   } catch(e) {
     console.error(e);
