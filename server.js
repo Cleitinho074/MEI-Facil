@@ -613,13 +613,126 @@ app.post('/api/admin/reset-demo', auth, demoOnly, async (req, res) => {
 // ── Health & Fallback ──────────────────────────────────────────
 app.get('/api/health', (_, res) => res.json({ status:'ok', ts: new Date().toISOString() }));
 
-// ── AI: Interpretar texto de estoque ──────────────────────────
+// ── Parser local de texto de estoque (rápido, sem custo de IA) ──
+function normalizeParseText(s){
+  return (s||'').toString().normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
+}
+
+// Remove cabeçalhos de mensagem de WhatsApp tipo "[09/07, 13:38] Rafael: "
+function stripWhatsappHeaders(text){
+  return text.split('\n').map(line =>
+    line.replace(/^\s*\[\d{1,2}\/\d{1,2}(?:\/\d{2,4})?,?\s*\d{1,2}:\d{2}\]\s*[^:]{1,60}:\s*/, '')
+  ).join('\n');
+}
+
+// Tenta casar o nome extraído com um produto (ou variação de produto) já cadastrado
+function matchExistingProduct(name, existingProducts){
+  const n = normalizeParseText(name);
+  if(!n) return { id: null, name: null };
+  for(const p of existingProducts){
+    if(normalizeParseText(p.name) === n) return { id: p.id, name: p.name };
+  }
+  for(const p of existingProducts){
+    for(const v of (p.variations||[])){
+      if(normalizeParseText(v) === n) return { id: p.id, name: `${p.name} — ${v}` };
+    }
+  }
+  let best = null, bestLen = 0;
+  for(const p of existingProducts){
+    const pn = normalizeParseText(p.name);
+    if(pn.length>=3 && (n.includes(pn) || pn.includes(n)) && pn.length > bestLen){ best = p; bestLen = pn.length; }
+  }
+  return best ? { id: best.id, name: best.name } : { id: null, name: null };
+}
+
+// Formato rotulado: "produto: 30 unidades, custo R$3, preço R$8"
+function parseLabeledLine(line, existingProducts){
+  if(!/custo|pre[çc]o/i.test(line)) return null;
+  const m = line.match(/^(.+?)[:\-]\s*(\d+)\s*(?:un(?:idades?)?)?[,;]?\s*(?:custo\s*[:\-]?\s*R?\$?\s*(\d+(?:[.,]\d{1,2})?))?[,;]?\s*(?:pre[çc]o\s*[:\-]?\s*R?\$?\s*(\d+(?:[.,]\d{1,2})?))?/i);
+  if(!m) return null;
+  const name = m[1].trim();
+  const match = matchExistingProduct(name, existingProducts);
+  return {
+    name: match.name || name, variationName: null,
+    qty: parseInt(m[2])||0,
+    cost: m[3] ? parseFloat(m[3].replace(',','.')) : null,
+    price: m[4] ? parseFloat(m[4].replace(',','.')) : null,
+    matchedProductId: match.id, matchedProductName: match.name,
+  };
+}
+
+// Formato "Nome- Xun[ de PREÇO][ e Yun de PREÇO2]..." — inclusive várias entradas seguidas sem quebra de linha
+function localParseStockText(text, existingProducts = []){
+  const cleaned = stripWhatsappHeaders(text || '');
+  const items = [];
+  const remainingLines = [];
+
+  cleaned.split('\n').forEach(line=>{
+    const l = line.trim();
+    if(!l) return;
+    const labeled = parseLabeledLine(l, existingProducts);
+    if(labeled) items.push(labeled);
+    else remainingLines.push(l);
+  });
+
+  const rest = remainingLines.join('\n');
+  const entryRegex = /([^\n\-][^\-\n]*?)-\s*(\d+\s*(?:un\b)?\s*(?:de\s*\d+(?:[.,]\d{1,2})?)?(?:\s*(?:e|ou|\/|,)\s*\d+\s*(?:un\b)?\s*(?:de\s*\d+(?:[.,]\d{1,2})?)?)*)/gi;
+  let match;
+  while((match = entryRegex.exec(rest)) !== null){
+    const rawName = match[1].replace(/\s+/g,' ').trim();
+    const qtyExpr = match[2];
+    if(!rawName) continue;
+
+    const clauseRegex = /(\d+)\s*(?:un\b)?\s*(?:de\s*(\d+(?:[.,]\d{1,2})?))?/gi;
+    let clauseMatch; const clauses=[];
+    while((clauseMatch = clauseRegex.exec(qtyExpr)) !== null){
+      clauses.push({ qty: parseInt(clauseMatch[1])||0, price: clauseMatch[2] ? parseFloat(clauseMatch[2].replace(',','.')) : null });
+    }
+    if(!clauses.length) continue;
+
+    const matched = matchExistingProduct(rawName, existingProducts);
+    clauses.forEach(c=>{
+      items.push({
+        name: matched.name || rawName, variationName: null,
+        qty: c.qty, cost: null, price: c.price,
+        matchedProductId: matched.id, matchedProductName: matched.name,
+      });
+    });
+  }
+
+  // 3) Linhas isoladas sem hífen, tipo "refrigerante 12un" ou "coxinha 30 unidades"
+  remainingLines.forEach(l=>{
+    if(l.includes('-')) return; // já tentado no passo 2
+    const m = l.match(/^(.+?)\s+(\d+)\s*(?:un(?:idades?)?)?\s*$/i);
+    if(!m) return;
+    const rawName = m[1].trim();
+    const matched = matchExistingProduct(rawName, existingProducts);
+    items.push({
+      name: matched.name || rawName, variationName: null,
+      qty: parseInt(m[2])||0, cost: null, price: null,
+      matchedProductId: matched.id, matchedProductName: matched.name,
+    });
+  });
+
+  return items;
+}
+
+
 app.post('/api/ai/interpret-stock', auth, async (req, res) => {
   const { text, existingProducts = [] } = req.body;
   if (!text || !text.trim()) return res.status(400).json({ error: 'Texto não informado' });
 
+  // 1) Parser local primeiro — instantâneo e sem custo de IA
+  let localItems = [];
+  try { localItems = localParseStockText(text, existingProducts); } catch (e) { console.error('local parse error:', e); }
+
+  if (localItems.length > 0) {
+    return res.json({ items: localItems, method: 'local' });
+  }
+
+  // 2) Texto não estruturado / parser local não reconheceu nada — usa IA como fallback
   const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY;
-  if (!ANTHROPIC_KEY) return res.status(503).json({ error: 'Chave da API de IA não configurada no servidor' });
+  if (!ANTHROPIC_KEY) return res.status(503).json({ error: 'Não consegui interpretar o texto automaticamente, e a IA de apoio não está configurada no servidor' });
 
   try {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -667,7 +780,7 @@ Se houver preço como "2un de 250", interprete como qty=2, price=250.`,
       if (match) items = JSON.parse(match[0]);
     }
 
-    res.json({ items });
+    res.json({ items, method: 'ai' });
   } catch (e) {
     console.error('interpret-stock error:', e);
     res.status(500).json({ error: 'Erro ao processar o texto com IA' });
