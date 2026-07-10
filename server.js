@@ -612,6 +612,68 @@ app.post('/api/admin/reset-demo', auth, demoOnly, async (req, res) => {
 
 // ── Health & Fallback ──────────────────────────────────────────
 app.get('/api/health', (_, res) => res.json({ status:'ok', ts: new Date().toISOString() }));
+
+// ── AI: Interpretar texto de estoque ──────────────────────────
+app.post('/api/ai/interpret-stock', auth, async (req, res) => {
+  const { text, existingProducts = [] } = req.body;
+  if (!text || !text.trim()) return res.status(400).json({ error: 'Texto não informado' });
+
+  const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY;
+  if (!ANTHROPIC_KEY) return res.status(503).json({ error: 'Chave da API de IA não configurada no servidor' });
+
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': ANTHROPIC_KEY,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 1500,
+        system: `Você é um assistente especialista em interpretação de listas de estoque para um sistema de gestão MEI brasileiro.
+Responda APENAS com JSON válido (array), sem texto extra, sem markdown, sem explicação.
+Estrutura de cada item:
+{
+  "name": "nome do produto (sem a variação)",
+  "variationName": "nome da variação ou null",
+  "qty": número inteiro (0 se não informado),
+  "price": número decimal ou null,
+  "cost": número decimal ou null,
+  "matchedProductId": "id do produto existente ou null",
+  "matchedProductName": "nome do produto existente ou null"
+}
+Produtos existentes: ${JSON.stringify(existingProducts)}
+Tente sempre encontrar correspondência com produtos existentes (match parcial/abreviado).
+Exemplos: "S25 Ultra- 9un" pode ser variação "S25 Ultra" de um produto "Capinha Samsung".
+Se houver preço como "2un de 250", interprete como qty=2, price=250.`,
+        messages: [{ role: 'user', content: `Interprete este estoque:\n\n${text}` }]
+      })
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      console.error('Anthropic error:', data);
+      return res.status(502).json({ error: 'Erro na API de IA: ' + (data.error?.message || 'desconhecido') });
+    }
+
+    const raw = data.content?.[0]?.text || '[]';
+    let items = [];
+    try {
+      items = JSON.parse(raw);
+    } catch {
+      const match = raw.match(/\[[\s\S]*\]/);
+      if (match) items = JSON.parse(match[0]);
+    }
+
+    res.json({ items });
+  } catch (e) {
+    console.error('interpret-stock error:', e);
+    res.status(500).json({ error: 'Erro ao processar o texto com IA' });
+  }
+});
+
 app.get('*', (_, res) => res.sendFile(path.join(__dirname, 'index.html')));
 
 app.use((err, req, res, next) => {
