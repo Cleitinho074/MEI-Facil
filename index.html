@@ -906,7 +906,10 @@ function renderProducts(el){
   el.innerHTML=`
     <div class="section-header">
       <span class="section-title">📦 Produtos & Serviços (${state.products.length})</span>
-      <button class="btn btn-primary btn-sm" onclick="openProductModal()">+ Novo Item</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-ghost btn-sm" onclick="openImportStockModal()" title="Importar estoque colando um texto">📋 Importar por Texto</button>
+        <button class="btn btn-primary btn-sm" onclick="openProductModal()">+ Novo Item</button>
+      </div>
     </div>
     <div class="table-wrap">
       <table>
@@ -2531,6 +2534,230 @@ function gerarPDF(){
   const printEl = document.getElementById('abnt-print');
   printEl.innerHTML = html;
   setTimeout(()=>{ window.print(); },200);
+}
+
+// ══════════════════════════════════════
+// IMPORTAR ESTOQUE POR TEXTO
+// ══════════════════════════════════════
+function openImportStockModal(){
+  openModal(`
+    <div class="modal-title">📋 Importar Estoque por Texto</div>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:12px">
+      Cole um texto descrevendo os produtos e quantidades. O sistema vai interpretar e montar uma prévia para você revisar antes de salvar.<br/>
+      <strong>Exemplos aceitos:</strong><br/>
+      <span style="font-family:monospace;font-size:12px;color:var(--blue-l)">
+        capinha ip 13 pro max - 14un<br/>
+        capinha a22 2un R$25<br/>
+        pastel de carne: 30 unidades, custo R$3, preço R$8<br/>
+        refrigerante 12un
+      </span>
+    </p>
+    <div class="form-group">
+      <label>Texto com produtos e quantidades</label>
+      <textarea id="import-text" rows="8" placeholder="Cole aqui o texto com os produtos e quantidades..." style="font-family:monospace;font-size:13px;resize:vertical"></textarea>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-ghost" onclick="_closeModal()">Cancelar</button>
+      <button class="btn btn-primary" id="btn-parse-stock" onclick="parseStockText()">🔍 Interpretar Texto</button>
+    </div>
+  `, true);
+}
+
+async function parseStockText(){
+  const text = document.getElementById('import-text')?.value?.trim();
+  if(!text) return toast('Cole um texto antes de interpretar','error');
+
+  const btn = document.getElementById('btn-parse-stock');
+  btn.disabled = true;
+  btn.textContent = '⏳ Interpretando...';
+
+  // Monta contexto com produtos existentes para ajudar a IA a mapear
+  const existingProducts = state.products.map(p => ({
+    id: p.id,
+    name: p.name,
+    type: p.type,
+    variations: (p.variations||[]).map(v=>v.name)
+  }));
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 1000,
+        system: `Você é um assistente especialista em interpretação de listas de estoque para um sistema de gestão MEI brasileiro.
+Responda APENAS com JSON válido, sem texto extra, sem markdown, sem explicação.
+O JSON deve ser um array de objetos com esta estrutura:
+{
+  "name": "nome do produto",
+  "variationName": "nome da variação (ou null se não tiver)",
+  "qty": número inteiro,
+  "price": número decimal ou null se não informado,
+  "cost": número decimal ou null se não informado,
+  "matchedProductId": "id do produto existente ou null",
+  "matchedProductName": "nome do produto existente correspondente ou null"
+}
+Produtos existentes no sistema: ${JSON.stringify(existingProducts)}
+Tente encontrar correspondências com os produtos existentes pelo nome (mesmo que parcial ou abreviado).
+Se o produto tiver variação (ex: "capinha ip 13" pode ser variação "IP 13" do produto "Capinha"), informe em variationName.
+Se a quantidade não for informada, use 0.`,
+        messages: [{
+          role: 'user',
+          content: `Interprete este texto de estoque e retorne o JSON:
+
+${text}`
+        }]
+      })
+    });
+
+    const data = await res.json();
+    const raw = data.content?.[0]?.text || '[]';
+
+    let items = [];
+    try { items = JSON.parse(raw); } catch(e) {
+      // tenta extrair JSON do texto
+      const match = raw.match(/\[[\s\S]*\]/);
+      if(match) items = JSON.parse(match[0]);
+    }
+
+    if(!Array.isArray(items) || items.length === 0){
+      toast('Não consegui interpretar o texto. Tente ser mais específico.','error');
+      btn.disabled = false; btn.textContent = '🔍 Interpretar Texto';
+      return;
+    }
+
+    renderStockPreview(items);
+
+  } catch(e) {
+    console.error(e);
+    toast('Erro ao interpretar o texto','error');
+    btn.disabled = false; btn.textContent = '🔍 Interpretar Texto';
+  }
+}
+
+function renderStockPreview(items){
+  // Salva os items no estado temporário para uso no saveImportedStock
+  window._importItems = items;
+
+  const rows = items.map((item, i) => {
+    const matched = item.matchedProductId
+      ? `<span style="font-size:11px;color:var(--green-l)">✅ ${item.matchedProductName}</span>`
+      : `<span style="font-size:11px;color:var(--amber)">⚠️ Produto novo</span>`;
+
+    return `<tr>
+      <td>
+        <input id="imp-name-${i}" value="${item.name}${item.variationName?' — '+item.variationName:''}" style="width:100%;min-width:140px"/>
+        <div style="margin-top:3px">${matched}</div>
+      </td>
+      <td><input type="number" id="imp-qty-${i}" value="${item.qty||0}" min="0" style="width:70px;text-align:center"/></td>
+      <td><input type="number" id="imp-cost-${i}" value="${item.cost??''}" min="0" step="0.01" placeholder="—" style="width:80px;text-align:right"/></td>
+      <td><input type="number" id="imp-price-${i}" value="${item.price??''}" min="0" step="0.01" placeholder="—" style="width:80px;text-align:right"/></td>
+      <td>
+        <button class="remove-item-btn" onclick="window._importItems.splice(${i},1);renderStockPreview(window._importItems)">×</button>
+      </td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('modal-content').innerHTML = `
+    <div class="modal-title">✅ Prévia do Estoque — Revise antes de salvar</div>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:12px">
+      Confira os valores e corrija se necessário. Campos em branco serão deixados sem valor.
+      Itens com ⚠️ serão criados como novos produtos (tipo "Produto").
+    </p>
+    <div style="overflow-x:auto">
+      <table style="width:100%;border-collapse:collapse">
+        <thead>
+          <tr style="font-size:11px;color:var(--muted)">
+            <th style="text-align:left;padding:6px 8px">PRODUTO / VARIAÇÃO</th>
+            <th style="padding:6px 8px">QTD</th>
+            <th style="padding:6px 8px">CUSTO R$</th>
+            <th style="padding:6px 8px">PREÇO R$</th>
+            <th style="padding:6px 8px"></th>
+          </tr>
+        </thead>
+        <tbody id="import-preview-rows">${rows}</tbody>
+      </table>
+    </div>
+    <div class="form-actions" style="margin-top:16px">
+      <button class="btn btn-ghost" onclick="openImportStockModal()">← Voltar</button>
+      <button class="btn btn-success" onclick="saveImportedStock()">💾 Confirmar e Salvar Estoque</button>
+    </div>`;
+}
+
+async function saveImportedStock(){
+  const items = window._importItems || [];
+  if(!items.length) return;
+
+  const btn = document.querySelector('#modal-content .btn-success');
+  if(btn){ btn.disabled = true; btn.textContent = '⏳ Salvando...'; }
+
+  let saved = 0, errors = 0;
+
+  for(let i = 0; i < items.length; i++){
+    const item = items[i];
+    const name  = document.getElementById(`imp-name-${i}`)?.value?.trim() || item.name;
+    const qty   = parseInt(document.getElementById(`imp-qty-${i}`)?.value) || 0;
+    const cost  = parseFloat(document.getElementById(`imp-cost-${i}`)?.value) || null;
+    const price = parseFloat(document.getElementById(`imp-price-${i}`)?.value) || null;
+
+    try {
+      if(item.matchedProductId){
+        // Produto existente — atualiza estoque
+        const prod = state.products.find(p=>p.id===item.matchedProductId);
+        if(prod && item.variationName && prod.variations?.length > 0){
+          // Atualiza estoque da variação específica
+          const newVars = prod.variations.map(v =>
+            v.name === item.variationName ? {...v, stock: qty} : v
+          );
+          await apiCall(`/api/products/${prod.id}`,'PUT',{
+            name:prod.name, type:prod.type, unit:prod.unit,
+            cost:cost??prod.cost, margin_pct:prod.marginPct, price:price??prod.price,
+            stock:prod.stock, variations:newVars
+          });
+        } else if(prod){
+          // Produto sem variação — usa rota de ajuste de estoque
+          await apiCall(`/api/products/${prod.id}/stock`,'PATCH',{mode:'set',value:qty});
+          // Atualiza custo/preço se informados
+          if(cost!==null || price!==null){
+            await apiCall(`/api/products/${prod.id}`,'PUT',{
+              name:prod.name, type:prod.type, unit:prod.unit,
+              cost:cost??prod.cost, margin_pct:prod.marginPct, price:price??prod.price,
+              stock:qty, variations:prod.variations||[]
+            });
+          }
+        }
+      } else {
+        // Produto novo — cria
+        const [prodName, varName] = name.includes('—') ? name.split('—').map(s=>s.trim()) : [name, null];
+        await apiCall('/api/products','POST',{
+          name: prodName,
+          type: 'product',
+          unit: 'un',
+          cost: cost || 0,
+          margin_pct: price && cost ? Math.round((price-cost)/cost*100) : 100,
+          price: price || 0,
+          stock: varName ? null : qty,
+          variations: varName ? [{name:varName, cost:cost||0, price:price||0, stock:qty}] : []
+        });
+      }
+      saved++;
+    } catch(e) {
+      console.error('Erro ao salvar item', item, e);
+      errors++;
+    }
+  }
+
+  _closeModal();
+  await loadProducts();
+  renderProducts(document.getElementById('content'));
+
+  if(errors === 0){
+    toast(`✅ ${saved} item(s) de estoque salvos com sucesso!`,'success');
+  } else {
+    toast(`${saved} salvos, ${errors} com erro. Verifique o console.`,'error');
+  }
+  window._importItems = [];
 }
 
 // ══════════════════════════════════════
