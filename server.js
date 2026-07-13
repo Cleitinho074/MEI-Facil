@@ -74,11 +74,26 @@ const initDB = async () => {
         created_at TIMESTAMP DEFAULT NOW()
       );
 
+      CREATE TABLE IF NOT EXISTS employees (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+        name VARCHAR(255) NOT NULL,
+        role VARCHAR(255),
+        salary DECIMAL(10,2) DEFAULT 0,
+        payment_day INT DEFAULT 5,
+        phone VARCHAR(50),
+        notes TEXT,
+        active BOOLEAN DEFAULT true,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+
       CREATE TABLE IF NOT EXISTS sales (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         user_id UUID REFERENCES users(id) ON DELETE CASCADE,
         client_id UUID REFERENCES clients(id) ON DELETE SET NULL,
         client_name VARCHAR(255),
+        employee_id UUID REFERENCES employees(id) ON DELETE SET NULL,
+        employee_name VARCHAR(255),
         total DECIMAL(10,2) DEFAULT 0,
         profit DECIMAL(10,2) DEFAULT 0,
         status VARCHAR(50) DEFAULT 'pending',
@@ -135,6 +150,22 @@ const initDB = async () => {
     await client.query(`ALTER TABLE sales ADD COLUMN IF NOT EXISTS sale_time VARCHAR(5);`);
     await client.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS variations JSONB DEFAULT '[]'::jsonb;`);
     await client.query(`ALTER TABLE sale_items ADD COLUMN IF NOT EXISTS variation_name VARCHAR(255);`);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS employees (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+        name VARCHAR(255) NOT NULL,
+        role VARCHAR(255),
+        salary DECIMAL(10,2) DEFAULT 0,
+        payment_day INT DEFAULT 5,
+        phone VARCHAR(50),
+        notes TEXT,
+        active BOOLEAN DEFAULT true,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+    await client.query(`ALTER TABLE sales ADD COLUMN IF NOT EXISTS employee_id UUID REFERENCES employees(id) ON DELETE SET NULL;`);
+    await client.query(`ALTER TABLE sales ADD COLUMN IF NOT EXISTS employee_name VARCHAR(255);`);
     console.log("✅ Banco de dados inicializado e pronto para uso!");
   } catch (err) {
     console.error("❌ Erro ao criar as tabelas:", err);
@@ -281,6 +312,34 @@ app.delete('/api/clients/:id', auth, async (req, res) => {
   res.status(204).end();
 });
 
+app.get('/api/employees', auth, async (req, res) => {
+  const { rows } = await Q('SELECT * FROM employees WHERE user_id=$1 AND active=true ORDER BY name', [req.userId]);
+  res.json(rows);
+});
+app.post('/api/employees', auth, async (req, res) => {
+  const { name, role, salary, payment_day, phone, notes } = req.body;
+  if (!name || !name.trim()) return res.status(400).json({ error: 'Nome é obrigatório' });
+  const { rows } = await Q(
+    'INSERT INTO employees(user_id,name,role,salary,payment_day,phone,notes) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *',
+    [req.userId, name.trim(), role || null, salary || 0, payment_day || 5, phone || null, notes || null]
+  );
+  res.status(201).json(rows[0]);
+});
+app.put('/api/employees/:id', auth, async (req, res) => {
+  const { name, role, salary, payment_day, phone, notes } = req.body;
+  if (!name || !name.trim()) return res.status(400).json({ error: 'Nome é obrigatório' });
+  const { rows } = await Q(
+    'UPDATE employees SET name=$1,role=$2,salary=$3,payment_day=$4,phone=$5,notes=$6 WHERE id=$7 AND user_id=$8 RETURNING *',
+    [name.trim(), role || null, salary || 0, payment_day || 5, phone || null, notes || null, req.params.id, req.userId]
+  );
+  rows.length ? res.json(rows[0]) : res.status(404).json({ error: 'Não encontrado' });
+});
+app.delete('/api/employees/:id', auth, async (req, res) => {
+  // Soft delete — preserva o histórico de vendas já vinculado ao funcionário
+  await Q('UPDATE employees SET active=false WHERE id=$1 AND user_id=$2', [req.params.id, req.userId]);
+  res.status(204).end();
+});
+
 app.get('/api/products', auth, async (req, res) => {
   const { rows } = await Q('SELECT * FROM products WHERE user_id=$1 AND active=true ORDER BY name', [req.userId]);
   res.json(rows);
@@ -325,7 +384,7 @@ app.get('/api/sales/:id', auth, async (req, res) => {
   res.json({ ...rows[0], items });
 });
 app.post('/api/sales', auth, async (req, res) => {
-  const { client_id, client_name, items, pay_method = 'dinheiro', fee_pct = 0, status = 'pending', notes, sale_date, sale_time } = req.body;
+  const { client_id, client_name, employee_id, employee_name, items, pay_method = 'dinheiro', fee_pct = 0, status = 'pending', notes, sale_date, sale_time } = req.body;
   const total = items.reduce((a, i) => a + i.qty * i.unit_price, 0);
   const profit = items.reduce((a, i) => a + (i.qty * i.unit_price - i.qty * (i.cost || 0)), 0);
   const feeValue = +(total * (fee_pct || 0) / 100).toFixed(2);
@@ -336,8 +395,8 @@ app.post('/api/sales', auth, async (req, res) => {
   try {
     await client.query('BEGIN');
     const { rows: saleRows } = await client.query(
-      `INSERT INTO sales(user_id,client_id,client_name,total,profit,status,pay_method,fee_pct,fee_value,net_total,notes,sale_date,sale_time,paid_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
-      [req.userId, client_id || null, client_name || null, total, profit, status, pay_method, fee_pct, feeValue, netTotal, notes || null, date, time, status === 'paid' ? new Date() : null]
+      `INSERT INTO sales(user_id,client_id,client_name,employee_id,employee_name,total,profit,status,pay_method,fee_pct,fee_value,net_total,notes,sale_date,sale_time,paid_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
+      [req.userId, client_id || null, client_name || null, employee_id || null, employee_name || null, total, profit, status, pay_method, fee_pct, feeValue, netTotal, notes || null, date, time, status === 'paid' ? new Date() : null]
     );
     const sale = saleRows[0];
     for (const it of items) {
@@ -796,3 +855,4 @@ app.use((err, req, res, next) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`\n🏪 MEI Fácil rodando na porta ${PORT}\n`));
+
