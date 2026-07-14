@@ -1,3347 +1,858 @@
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>MEI Fácil — Gestão Simplificada</title>
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-<style>
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{
-  --blue:#1B4F72;--blue-l:#2E86C1;--blue-x:#D6EAF8;
-  --green:#1E8449;--green-l:#27AE60;--green-x:#D5F5E3;
-  --red:#C0392B;--red-l:#E74C3C;--red-x:#FADBD8;
-  --amber:#D68910;--amber-x:#FEF9E7;
-  --purple:#7D3C98;--purple-x:#F5EEF8;
-  --bg:#F0F4F8;--card:#FFFFFF;--text:#2C3E50;--muted:#6C7A89;
-  --border:#DDE3EA;--shadow:0 2px 12px rgba(0,0,0,.08);--radius:10px;
-}
+// ═══════════════════════════════════════════════════════════════
+// MEI Fácil — Backend Completo (Pronto para Railway)
+// ═══════════════════════════════════════════════════════════════
 
-/* 🌙 TEMA ESCURO */
-[data-theme="dark"] {
-  --bg: #121212;
-  --card: #1E1E1E;
-  --text: #E0E0E0;
-  --muted: #A0A0A0;
-  --border: #333333;
-  --shadow: 0 4px 12px rgba(0,0,0,.4);
-  --blue-x: rgba(46, 134, 193, 0.15);
-  --green-x: rgba(39, 174, 96, 0.15);
-  --red-x: rgba(231, 76, 60, 0.15);
-  --amber-x: rgba(214, 137, 16, 0.15);
-}
-[data-theme="dark"] input, 
-[data-theme="dark"] select, 
-[data-theme="dark"] textarea {
-  background: #2A2A2A; color: #E0E0E0; border-color: #444;
-}
-[data-theme="dark"] .sidebar { background: #0F2A3D; }
-[data-theme="dark"] .sale-item-row:nth-child(even) { background: #242424; }
-[data-theme="dark"] .sale-item-header { background: #121212 !important; }
-[data-theme="dark"] .pay-pill { background: #2A2A2A; border-color: #444; }
-[data-theme="dark"] .calc-box { background: #242424; border: 1px solid #333; }
-[data-theme="dark"] .history-entry { background: #242424; }
-[data-theme="dark"] tr:hover td { background: rgba(255,255,255,0.05); } /* Correção do Hover */
-[data-theme="dark"] .auth-page { background: linear-gradient(135deg, #0F2A3D 0%, #1B4F72 100%); }
+require('dotenv').config();
+const express   = require('express');
+const helmet    = require('helmet');
+const cors      = require('cors');
+const rateLimit = require('express-rate-limit');
+const bcrypt    = require('bcryptjs');
+const jwt       = require('jsonwebtoken');
+const { Pool }  = require('pg');
+const path      = require('path');
 
-body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.6}
-a{color:var(--blue-l);text-decoration:none}
+const app = express();
 
-/* Layout */
-.app{display:flex;min-height:100vh}
-.sidebar{width:220px;background:var(--blue);color:#fff;display:flex;flex-direction:column;flex-shrink:0;transition:width .25s ease}
-.sidebar.collapsed{width:60px}
-.logo{padding:20px 16px;font-size:18px;font-weight:700;white-space:nowrap;overflow:hidden;display:flex;align-items:center;gap:10px;border-bottom:1px solid rgba(255,255,255,.15)}
-.logo-icon{font-size:22px;flex-shrink:0}
-.logo-text,.nav-label{transition:opacity .2s}
-.sidebar.collapsed .logo-text,.sidebar.collapsed .nav-label{opacity:0;width:0}
-.nav{flex:1;padding:12px 0}
-.nav-item{display:flex;align-items:center;gap:12px;padding:11px 18px;cursor:pointer;font-size:14px;white-space:nowrap;overflow:hidden;border-left:3px solid transparent;transition:background .15s,border-color .15s}
-.nav-item:hover{background:rgba(255,255,255,.1)}
-.nav-item.active{background:rgba(255,255,255,.15);border-left-color:#fff;font-weight:600}
-.nav-icon{font-size:18px;flex-shrink:0}
-.collapse-btn{padding:14px 18px;cursor:pointer;font-size:18px;border-top:1px solid rgba(255,255,255,.15);text-align:center}
-.main{flex:1;display:flex;flex-direction:column;min-width:0}
-.topbar{background:var(--card);border-bottom:1px solid var(--border);padding:14px 24px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
-.topbar-title{font-size:18px;font-weight:700}
-.topbar-right{display:flex;align-items:center;gap:12px}
-.user-badge{background:var(--blue);color:#fff;border-radius:50%;width:34px;height:34px;display:grid;place-items:center;font-weight:700;font-size:13px;cursor:pointer}
-.content{padding:24px;flex:1}
-
-/* Cards */
-.cards-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:24px}
-.card{background:var(--card);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow)}
-.card-metric{display:flex;flex-direction:column;gap:4px}
-.card-label{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;font-weight:600}
-.card-value{font-size:26px;font-weight:700}
-.card-sub{font-size:12px;color:var(--muted);margin-top:2px}
-.card-icon{font-size:28px;margin-bottom:8px}
-.green{color:var(--green-l)}.red{color:var(--red-l)}.blue{color:var(--blue-l)}.amber{color:var(--amber)}.purple{color:var(--purple)}
-
-/* MEI limit */
-.limit-card{background:var(--card);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow);margin-bottom:24px}
-.limit-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
-.limit-title{font-weight:700;font-size:15px}
-.limit-pct{font-size:22px;font-weight:700}
-.progress-track{background:var(--border);border-radius:99px;height:14px;overflow:hidden}
-.progress-fill{height:100%;border-radius:99px;background:linear-gradient(90deg,var(--green-l),var(--blue-l));transition:width .6s ease}
-.progress-fill.warning{background:linear-gradient(90deg,var(--amber),#E67E22)}
-.progress-fill.danger{background:linear-gradient(90deg,var(--red-l),#C0392B)}
-.limit-info{display:flex;justify-content:space-between;margin-top:8px;font-size:12px;color:var(--muted);flex-wrap:wrap;gap:4px}
-.alert-box{background:var(--red-x);border:1px solid var(--red-l);border-radius:8px;padding:12px 16px;margin-top:12px;font-size:13px;color:var(--red);display:flex;align-items:center;gap:8px}
-.alert-amber{background:var(--amber-x);border-color:var(--amber);color:var(--amber)}
-
-/* Tables */
-.section-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px}
-.section-title{font-size:16px;font-weight:700}
-.table-wrap{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;overflow-x:auto}
-table{width:100%;border-collapse:collapse;min-width:520px}
-th{background:var(--bg);padding:11px 16px;text-align:left;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border)}
-td{padding:12px 16px;border-bottom:1px solid var(--border);font-size:14px}
-tr:last-child td{border-bottom:none}
-tr:hover td{background:#F7FAFC}
-.badge{display:inline-flex;align-items:center;padding:2px 10px;border-radius:99px;font-size:12px;font-weight:600}
-.badge-green{background:var(--green-x);color:var(--green)}
-.badge-red{background:var(--red-x);color:var(--red)}
-.badge-blue{background:var(--blue-x);color:var(--blue)}
-.badge-amber{background:var(--amber-x);color:var(--amber)}
-.badge-purple{background:var(--purple-x);color:var(--purple)}
-
-/* Buttons */
-.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;border:none;transition:opacity .15s,transform .1s}
-.btn:active{transform:scale(.97)}
-.btn-primary{background:var(--blue-l);color:#fff}
-.btn-primary:hover,.btn-success:hover,.btn-danger:hover{opacity:.9}
-.btn-success{background:var(--green-l);color:#fff}
-.btn-danger{background:var(--red-l);color:#fff}
-.btn-ghost{background:transparent;color:var(--blue-l);border:1.5px solid var(--blue-l)}
-.btn-sm{padding:5px 12px;font-size:13px}
-.btn-icon{padding:5px 8px;font-size:16px;border:none;background:transparent;cursor:pointer;}
-
-/* Modal */
-.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;place-items:center;z-index:1000;padding:16px}
-.modal-overlay.open{display:grid}
-.modal{background:var(--card);border-radius:12px;padding:28px;width:100%;max-width:640px;max-height:92vh;overflow-y:auto}
-.modal-wide{max-width:780px}
-.modal-title{font-size:18px;font-weight:700;margin-bottom:20px}
-.form-group{margin-bottom:16px}
-label{display:block;font-size:13px;font-weight:600;color:var(--muted);margin-bottom:5px}
-input,select,textarea{width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:14px;font-family:inherit;transition:border-color .15s;outline:none}
-input:focus,select:focus,textarea:focus{border-color:var(--blue-l)}
-/* Radio/checkbox não devem herdar width:100%/padding/border do input genérico — isso fazia os cards de seleção "estourarem" e o texto sair da caixa */
-input[type="radio"],input[type="checkbox"]{width:16px;height:16px;min-width:16px;padding:0;margin:0;border-radius:50%;flex-shrink:0;accent-color:var(--blue-l)}
-input[type="checkbox"]{border-radius:4px}
-.form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.form-row-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
-.form-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:20px;flex-wrap:wrap}
-
-/* Calc box */
-.calc-box{background:var(--blue-x);border-radius:10px;padding:16px;margin-top:8px}
-.calc-row{display:flex;justify-content:space-between;font-size:13px;padding:3px 0}
-.calc-row.total{font-weight:700;font-size:15px;border-top:1px solid var(--border);margin-top:6px;padding-top:8px}
-.calc-green{background:var(--green-x)}
-
-/* Sale items list */
-.sale-items-list{border:1.5px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:12px}
-.sale-item-row{display:grid;grid-template-columns:1fr 80px 100px 80px 36px;gap:8px;align-items:center;padding:10px 12px;border-bottom:1px solid var(--border);background:var(--card)}
-.sale-item-row:last-child{border-bottom:none}
-.sale-item-row:nth-child(even){background:#FAFBFD}
-.sale-item-header{background:var(--bg)!important;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;padding:8px 12px!important}
-.sale-item-add{padding:10px 12px;border-top:1px solid var(--border);background:var(--bg);display:flex;align-items:center;gap:8px}
-.item-subtotal{font-weight:700;color:var(--green-l);font-size:13px;text-align:right}
-.remove-item-btn{width:28px;height:28px;border-radius:6px;border:none;background:var(--red-x);color:var(--red);cursor:pointer;font-size:15px;display:grid;place-items:center;flex-shrink:0}
-.remove-item-btn:hover{background:var(--red-l);color:#fff}
-
-/* Payment method pills */
-.pay-methods{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px}
-.pay-pill{padding:7px 14px;border-radius:8px;border:2px solid var(--border);background:var(--card);cursor:pointer;font-size:13px;font-weight:600;color:var(--muted);transition:all .15s;display:flex;align-items:center;gap:6px}
-.pay-pill.active{border-color:var(--blue-l);background:var(--blue-x);color:var(--blue)}
-.pay-pill.active.green-pay{border-color:var(--green-l);background:var(--green-x);color:var(--green)}
-.fee-row{background:var(--amber-x);border:1px solid var(--amber);border-radius:8px;padding:10px 14px;font-size:13px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-
-/* Bar chart */
-.bar-chart{display:flex;align-items:flex-end;gap:8px;height:120px;padding:0 4px}
-.bar-wrap{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;height:100%;justify-content:flex-end}
-.bar-col{width:100%;border-radius:6px 6px 0 0;transition:height .4s ease;min-height:4px}
-.bar-label{font-size:10px;color:var(--muted)}
-.bar-val{font-size:11px;font-weight:600}
-
-/* Tabs */
-.tabs{display:flex;gap:4px;margin-bottom:20px;background:var(--bg);border-radius:8px;padding:4px;flex-wrap:wrap}
-.tab{padding:7px 16px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;color:var(--muted);transition:background .15s,color .15s}
-.tab.active{background:var(--card);color:var(--blue-l);box-shadow:0 1px 4px rgba(0,0,0,.1)}
-
-/* History/audit */
-.history-entry{border-left:3px solid var(--blue-l);padding:8px 14px;margin-bottom:8px;background:var(--bg);border-radius:0 8px 8px 0;font-size:13px}
-.history-entry.edit{border-color:var(--amber)}
-.history-entry.create{border-color:var(--green-l)}
-
-/* Toast */
-.toast{position:fixed;bottom:24px;right:24px;z-index:2000;background:var(--text);color:#fff;padding:12px 20px;border-radius:10px;font-size:14px;font-weight:600;box-shadow:var(--shadow);transform:translateY(80px);opacity:0;transition:all .3s ease;display:flex;align-items:center;gap:8px}
-.toast.show{transform:translateY(0);opacity:1}
-.toast.success{background:var(--green)}
-.toast.error{background:var(--red)}
-
-/* Auth */
-.auth-page{min-height:100vh;display:grid;place-items:center;background:linear-gradient(135deg,var(--blue) 0%,var(--blue-l) 100%);padding:16px}
-.auth-card{background:var(--card);border-radius:16px;padding:40px;width:100%;max-width:400px}
-.auth-logo{text-align:center;margin-bottom:28px}
-.auth-logo-icon{font-size:48px;display:block;margin-bottom:8px}
-.auth-logo-title{font-size:24px;font-weight:700;color:var(--blue)}
-.auth-logo-sub{font-size:13px;color:var(--muted)}
-.auth-btn{width:100%;padding:12px;font-size:16px}
-
-.client-link{color:var(--blue-l);cursor:pointer;font-weight:700;border-bottom:1px dashed var(--blue-l);}
-.client-link:hover{color:var(--blue);}
-/* Stock badge */
-.stock-low{color:var(--red);font-weight:700}
-.stock-ok{color:var(--green-l)}
-
-@media(max-width:768px){
-  .sidebar{width:0;position:fixed;height:100%;z-index:500;overflow:hidden}
-  .sidebar.mobile-open{width:220px}
-  .form-row,.form-row-3{grid-template-columns:1fr}
-  .cards-grid{grid-template-columns:1fr 1fr}
-  .topbar{padding:12px 16px}
-  .content{padding:16px}
-  .hide-mobile{display:none}
-  .sale-item-row{grid-template-columns:1fr 60px 80px 70px 32px;gap:4px;padding:8px}
-}
-@media(max-width:480px){
-  .cards-grid{grid-template-columns:1fr}
-  .pay-pill{font-size:12px;padding:6px 10px}
-}
-/* ── Impressão ABNT ── */
-@media print{
-  /* Oculta apenas o app e o modal — NUNCA o body, senão o #abnt-print (filho do body) some junto mesmo com display:block!important */
-  #auth-page,#app,.modal-overlay,.toast{display:none!important}
-  #abnt-print{display:block!important}
-  @page{size:A4;margin:3cm 2.5cm 2cm 3cm}
-  #abnt-print{font-family:'Times New Roman',Times,serif;font-size:12pt;line-height:1.5;color:#000;background:#fff}
-  #abnt-print h1{font-size:14pt;font-weight:bold;text-align:center;text-transform:uppercase;margin:0 0 6pt}
-  #abnt-print h2{font-size:12pt;font-weight:bold;margin:18pt 0 6pt}
-  #abnt-print h3{font-size:12pt;font-weight:bold;margin:12pt 0 4pt}
-  #abnt-print p,#abnt-print td,#abnt-print th{font-size:12pt}
-  #abnt-print table{width:100%;border-collapse:collapse;margin:12pt 0}
-  #abnt-print th{border:1pt solid #000;padding:4pt 6pt;background:#eee;font-weight:bold;text-align:left}
-  #abnt-print td{border:1pt solid #000;padding:4pt 6pt}
-  #abnt-print .abnt-cover{text-align:center;padding-top:6cm}
-  #abnt-print .abnt-cover p{margin:4pt 0}
-  #abnt-print .abnt-section{page-break-before:always}
-  #abnt-print .abnt-first-section{page-break-before:avoid}
-  #abnt-print hr{border:none;border-top:1pt solid #000;margin:12pt 0}
-  #abnt-print .abnt-num{text-indent:0}
-}
-#abnt-print{display:none}
-.btn-theme{background:none;border:1.5px solid var(--border);border-radius:8px;padding:5px 10px;cursor:pointer;font-size:15px;line-height:1;transition:all .2s;color:var(--text)}
-.btn-theme:hover{background:var(--border)}
-</style>
-<script>
-  // Inicializa o modo escuro antes de renderizar a página para evitar piscos brancos
-  const savedTheme = localStorage.getItem('mei_theme') || 'light';
-  document.documentElement.setAttribute('data-theme', savedTheme);
-
-  // Helper Global para adicionar Variações/Variações
-  function getVariationRow(name = '', price = '', cost = '', stock = '') {
-    return `
-      <div class="variation-row" style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr auto;gap:8px;align-items:center;margin-top:6px;">
-        <input type="text" class="var-name" placeholder="Ex: Carne, Queijo..." value="${name}" style="min-width:0">
-        <input type="number" step="0.01" class="var-cost" placeholder="Custo R$" value="${cost}" style="min-width:0">
-        <input type="number" step="0.01" class="var-price" placeholder="Preço R$" value="${price}" style="min-width:0">
-        <input type="number" min="0" step="1" class="var-stock" placeholder="Estoque" value="${stock}" style="min-width:0">
-        <button type="button" class="remove-item-btn" onclick="removeVariationRow(this)">×</button>
-      </div>`;
-  }
-  window.addVariationRow = function() {
-    document.getElementById('p-variations-container').insertAdjacentHTML('beforeend', getVariationRow());
-    if(window.updateStockFieldVisibility) window.updateStockFieldVisibility();
-  }
-  window.removeVariationRow = function(btn) {
-    btn.parentElement.remove();
-    if(window.updateStockFieldVisibility) window.updateStockFieldVisibility();
-  }
-</script>
-</head>
-<body>
-
-<div id="auth-page" class="auth-page">
-  <div class="auth-card">
-    <div class="auth-logo">
-      <span class="auth-logo-icon">🏪</span>
-      <div class="auth-logo-title">MEI Fácil</div>
-      <div class="auth-logo-sub">Gestão simples para o seu negócio</div>
-    </div>
-    <div id="auth-tab-bar" class="tabs" style="margin-bottom:24px">
-      <div class="tab active" onclick="switchAuth('login')">Entrar</div>
-      <div class="tab" onclick="switchAuth('register')">Cadastrar</div>
-    </div>
-    <div id="auth-login">
-      <div class="form-group"><label>E-mail</label><input type="email" id="login-email" placeholder="seu@email.com"/></div>
-      <div class="form-group"><label>Senha</label><input type="password" id="login-pass" placeholder="••••••••"/></div>
-      <button class="btn btn-primary auth-btn" onclick="doLogin()">Entrar na conta</button>
-      <p style="text-align:center;margin-top:14px;font-size:13px;color:var(--muted)"><a href="#" onclick="demoLogin()">🎯 Entrar com conta demo</a></p>
-    </div>
-    <div id="auth-register" style="display:none">
-      <div class="form-group"><label>Nome completo</label><input type="text" id="reg-name" placeholder="João da Silva"/></div>
-      <div class="form-group"><label>E-mail</label><input type="email" id="reg-email" placeholder="seu@email.com"/></div>
-      <div class="form-group"><label>CPF/CNPJ</label><input type="text" id="reg-cpf" placeholder="000.000.000-00 ou 00.000.000/0001-00"/></div>
-      <div class="form-group">
-        <label>Tipo de empresa / enquadramento</label>
-        <select id="reg-business-type" onchange="onRegBusinessTypeChange()" style="width:100%">
-          <option value="MEI">MEI — Microempreendedor Individual (limite R$ 81.000/ano)</option>
-          <option value="ME">ME — Microempresa (limite R$ 360.000/ano)</option>
-          <option value="EPP">EPP — Empresa de Pequeno Porte (limite R$ 4.800.000/ano)</option>
-          <option value="SIMPLES">Simples Nacional (outros portes)</option>
-          <option value="LTDA">LTDA — Sociedade Limitada</option>
-          <option value="AUTONOMO">Profissional Autônomo (sem CNPJ)</option>
-          <option value="OUTRO">Outro</option>
-        </select>
-        <div id="reg-business-desc" style="font-size:12px;color:var(--green-l);margin-top:4px;padding:6px 10px;background:var(--green-x);border-radius:6px">
-          ✅ Limite anual de faturamento: R$ 81.000
-        </div>
-      </div>
-      <div class="form-group"><label>Senha</label><input type="password" id="reg-pass" placeholder="Mínimo 8 caracteres"/></div>
-      <button class="btn btn-primary auth-btn" onclick="doRegister()">Criar conta grátis</button>
-    </div>
-  </div>
-</div>
-
-<div id="app" class="app" style="display:none">
-  <nav class="sidebar" id="sidebar">
-    <div class="logo"><span class="logo-icon">🏪</span><span class="logo-text">MEI Fácil</span></div>
-    <div class="nav">
-      <div class="nav-item active" onclick="navigate('dashboard')"><span class="nav-icon">📊</span><span class="nav-label">Dashboard</span></div>
-      <div class="nav-item" onclick="navigate('clients')"><span class="nav-icon">👥</span><span class="nav-label">Clientes</span></div>
-      <div class="nav-item" onclick="navigate('products')"><span class="nav-icon">📦</span><span class="nav-label">Produtos/Serviços</span></div>
-      <div class="nav-item" onclick="navigate('sales')"><span class="nav-icon">🛒</span><span class="nav-label">Vendas</span></div>
-      <div class="nav-item" onclick="navigate('employees')"><span class="nav-icon">🧑‍💼</span><span class="nav-label">Funcionários</span></div>
-      <div class="nav-item" onclick="navigate('cashflow')"><span class="nav-icon">💰</span><span class="nav-label">Fluxo de Caixa</span></div>
-      <div class="nav-item" onclick="navigate('reports')"><span class="nav-icon">📈</span><span class="nav-label">Relatórios</span></div>
-      <div class="nav-item" onclick="navigate('notes')"><span class="nav-icon">📝</span><span class="nav-label">Notas</span></div>
-      <div class="nav-item" onclick="navigate('settings')"><span class="nav-icon">⚙️</span><span class="nav-label">Configurações</span></div>
-      <div class="nav-item" id="nav-adminseed" style="display:none" onclick="navigate('adminseed')"><span class="nav-icon">🛠️</span><span class="nav-label">Admin (dados demo)</span></div>
-    </div>
-    <div class="collapse-btn" onclick="toggleSidebar()">‹</div>
-  </nav>
-  <div class="main">
-    <header class="topbar">
-      <div style="display:flex;align-items:center;gap:12px">
-        <span style="cursor:pointer;font-size:20px;display:none" id="menu-btn" onclick="toggleMobile()">☰</span>
-        <span class="topbar-title" id="page-title">Dashboard</span>
-      </div>
-      <div class="topbar-right">
-        <span id="topbar-date" style="font-size:13px;color:var(--muted)" class="hide-mobile"></span>
-        <button class="btn-theme" id="theme-btn" onclick="toggleDarkMode()" title="Alternar modo escuro/claro">☀️</button>
-        <div class="user-badge" id="user-badge" onclick="navigate('settings')">J</div>
-      </div>
-    </header>
-    <div class="content" id="content"></div>
-  </div>
-</div>
-
-<div id="abnt-print"></div>
-<div class="modal-overlay" id="modal-overlay" onclick="closeModal(event)">
-  <div class="modal" id="modal-box"><div id="modal-content"></div></div>
-</div>
-<div class="toast" id="toast"></div>
-
-<script>
-// ══════════════════════════════════════
-// THEME LOGIC
-// ══════════════════════════════════════
-// toggleTheme substituído por toggleDarkMode
-function updateThemeIcon(theme) {
-  const btn = document.getElementById('theme-btn');
-  if (btn) btn.textContent = theme === 'dark' ? '☀️' : '🌙';
-}
-window.addEventListener('DOMContentLoaded', () => {
-  const currentTheme = document.documentElement.getAttribute('data-theme') || 'light';
-  updateThemeIcon(currentTheme);
+// Configuração do banco de dados (A Railway injeta a DATABASE_URL automaticamente)
+const db = new Pool({ 
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.DATABASE_URL && process.env.DATABASE_URL.includes('railway') 
+       ? false // Railway em rede interna geralmente não exige SSL estrito
+       : (process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false) 
 });
 
-// ══════════════════════════════════════
-// STATE
-// ══════════════════════════════════════
-const MEI_LIMIT = 81000; // fallback padrão
-const BUSINESS_TYPES = {
-  'MEI':      { label:'MEI — Microempreendedor Individual', limit:81000,   color:'green',  desc:'Limite anual de faturamento: R$ 81.000' },
-  'ME':       { label:'ME — Microempresa',                  limit:360000,  color:'blue',   desc:'Limite anual de faturamento: R$ 360.000 (Simples Nacional)' },
-  'EPP':      { label:'EPP — Empresa de Pequeno Porte',     limit:4800000, color:'purple', desc:'Limite anual de faturamento: R$ 4.800.000' },
-  'SIMPLES':  { label:'Simples Nacional (outros portes)',    limit:4800000, color:'amber',  desc:'Regime tributário diferenciado' },
-  'LTDA':     { label:'LTDA — Sociedade Limitada',          limit:null,    color:'muted',  desc:'Sem limite de faturamento definido' },
-  'AUTONOMO': { label:'Profissional Autônomo (sem CNPJ)',    limit:null,    color:'muted',  desc:'Sem limite de faturamento por CNPJ' },
-  'OUTRO':    { label:'Outro tipo de empresa',              limit:null,    color:'muted',  desc:'Configure o limite manualmente se necessário' },
-};
-function getBusinessLimit(type){ return BUSINESS_TYPES[type]?.limit || MEI_LIMIT; }
-function currentLimit(){ return getBusinessLimit(state.businessType||'MEI') || MEI_LIMIT; }
-function getBusinessLabel(type){ return BUSINESS_TYPES[type]?.label || 'MEI'; }
-
-const PAY_METHODS = {
-  dinheiro: { label:'Dinheiro',        icon:'💵', hasFee:false },
-  pix:      { label:'PIX',             icon:'⚡', hasFee:true,  defaultFee:0 },
-  debito:   { label:'Cartão Débito',   icon:'💳', hasFee:true,  defaultFee:1.5 },
-  credito:  { label:'Cartão Crédito',  icon:'💳', hasFee:true,  defaultFee:2.99 },
-  boleto:   { label:'Boleto',          icon:'📄', hasFee:false },
-};
-
-const state = {
-  user: null,
-  page: 'dashboard',
-  sidebarCollapsed: false,
-  payFees: { pix:0, debito:1.5, credito:2.99 },
-  clients: [],
-  products: [],
-  sales: [],
-  cashflow: [],
-  employees: [],
-  yearRevenue: 0,
-  meiLimit: 81000,
-  revenueHistory: [],
-};
-
-// ── Carregamento de dados via API ──
-async function loadClients(){
-  const data = await apiCall('/api/clients');
-  state.clients = data || [];
-}
-async function loadProducts(){
-  const data = await apiCall('/api/products');
-  state.products = (data || []).map(p => ({
-    id: p.id, name: p.name, type: p.type, unit: p.unit,
-    cost: +p.cost, marginPct: +p.margin_pct, price: +p.price,
-    stock: p.stock === null || p.stock === undefined ? null : +p.stock,
-    variations: (p.variations||[]).map(v=>({...v, stock: v.stock!==null&&v.stock!==undefined?+v.stock:null}))
-  }));
-}
-async function loadSales(){
-  const data = await apiCall('/api/sales');
-  state.sales = (data || []).map(mapSaleFromApi);
-}
-async function loadCashflow(){
-  const data = await apiCall('/api/cashflow');
-  state.cashflow = (data || []).map(c => ({
-    id: c.id, date: String(c.entry_date||'').substring(0,10), desc: c.description, type: c.type,
-    value: +c.value, saleId: c.sale_id, history: c.edit_history || [],
-  }));
-}
-async function loadEmployees(){
-  const data = await apiCall('/api/employees');
-  state.employees = (data || []).map(e => ({
-    id: e.id, name: e.name, role: e.role, salary: +e.salary,
-    paymentDay: +e.payment_day || 5, phone: e.phone, notes: e.notes,
-  }));
-}
-async function loadDashboardStats(){
-  // Busca stats e perfil em paralelo para garantir business_type atualizado
-  const [data, me] = await Promise.all([
-    apiCall('/api/reports/dashboard'),
-    apiCall('/api/auth/me')
-  ]);
-  if(me && me.user){
-    state.user = {...state.user, ...me.user};
-    state.businessType = me.user.business_type || 'MEI';
-  }
-  if(data){
-    state.yearRevenue = +data.year_revenue;
-    // Recalcula o limite com o tipo correto do usuário
-    state.meiLimit = getBusinessLimit(state.businessType) || +data.mei_limit;
-    state.dashboardStats = data;
-  }
-}
-async function loadRevenueHistory(){
-  const data = await apiCall('/api/revenue-audit');
-  state.revenueHistory = (data || []).map(h => ({
-    ts: h.created_at, action: h.before_val === null ? 'init' : 'edit',
-    before: h.before_val !== null ? +h.before_val : null, after: +h.after_val,
-    reason: h.reason, user: '',
-  }));
-}
-function mapSaleFromApi(s){
-  return {
-    id: s.id, date: String(s.sale_date||'').substring(0,10), time: s.sale_time || (String(s.sale_date||'').length>10?String(s.sale_date).substring(11,16):''), clientId: s.client_id, clientName: s.client_name || 'Cliente avulso',
-    employeeId: s.employee_id || null, employeeName: s.employee_name || null,
-    items: (s.items || []).map(i => ({
-      productId: i.product_id, name: i.product_name, variationName: i.variation_name || null, qty: +i.qty,
-      unitPrice: +i.unit_price, cost: +i.cost, subtotal: +i.subtotal,
-    })),
-    total: +s.total, profit: +s.profit, status: s.status, payMethod: s.pay_method,
-    feePct: +s.fee_pct, feeValue: +s.fee_value, netTotal: +s.net_total,
-  };
-}
-// Carrega tudo que as telas precisam de uma vez (chamado após login)
-async function loadAllData(){
-  await Promise.all([loadClients(), loadProducts(), loadSales(), loadCashflow(), loadEmployees(), loadDashboardStats(), loadRevenueHistory()]);
-}
-
-// ══════════════════════════════════════
-// AUTH — conectada ao backend real
-// ══════════════════════════════════════
-
-// ⚠️ Troque pela URL do seu backend no Railway após fazer o deploy
-const API_BASE = '';
-
-async function apiCall(path, method='GET', body=null, requiresAuth=true){
-  const headers = {'Content-Type':'application/json'};
-  if(requiresAuth){
-    const token = localStorage.getItem('mei_jwt');
-    if(!token){ showAuthPage(); return null; }
-    headers['Authorization'] = 'Bearer ' + token;
-  }
-  const opts = { method, headers };
-  if(body) opts.body = JSON.stringify(body);
-  try {
-    const res = await fetch(API_BASE + path, opts);
-    if(res.status === 204) return true;
-    const text = await res.text();
-    const data = text ? JSON.parse(text) : {};
-    if(!res.ok) throw new Error(data.error || 'Erro desconhecido');
-    return data;
-  } catch(err) {
-    toast(err.message || 'Erro de conexão com o servidor', 'error');
-    return null;
-  }
-}
-
-function showAuthPage(){
-  document.getElementById('app').style.display='none';
-  document.getElementById('auth-page').style.display='grid';
-}
-
-function setAuthLoading(btn, loading){
-  btn.disabled = loading;
-  btn.textContent = loading ? '⏳ Aguarde...' : btn.dataset.label;
-}
-
-function switchAuth(tab){
-  document.getElementById('auth-login').style.display    = tab==='login'?'':'none';
-  document.getElementById('auth-register').style.display = tab==='register'?'':'none';
-  document.querySelectorAll('#auth-tab-bar .tab').forEach((t,i)=>t.classList.toggle('active',(i===0&&tab==='login')||(i===1&&tab==='register')));
-}
-
-async function doLogin(){
-  const email = document.getElementById('login-email').value.trim();
-  const password = document.getElementById('login-pass').value;
-  if(!email || !password) return toast('Preencha e-mail e senha','error');
-
-  const btn = document.querySelector('#auth-login .auth-btn');
-  btn.dataset.label = btn.textContent;
-  setAuthLoading(btn, true);
-
-  const data = await apiCall('/api/auth/login', 'POST', {email, password}, false);
-  setAuthLoading(btn, false);
-  if(!data) return;
-
-  localStorage.setItem('mei_jwt', data.token);
-  await loginSuccess(data.user);
-}
-
-async function doRegister(){
-  const name     = document.getElementById('reg-name').value.trim();
-  const email    = document.getElementById('reg-email').value.trim();
-  const cpf_cnpj = document.getElementById('reg-cpf').value.trim();
-  const password = document.getElementById('reg-pass').value;
-  if(!name || !email || !password) return toast('Preencha todos os campos','error');
-  if(password.length < 8) return toast('Senha deve ter no mínimo 8 caracteres','error');
-
-  const btn = document.querySelector('#auth-register .auth-btn');
-  btn.dataset.label = btn.textContent;
-  setAuthLoading(btn, true);
-
-  const data = await apiCall('/api/auth/register', 'POST', {name, email, password, cpf_cnpj}, false);
-  setAuthLoading(btn, false);
-  if(!data) return;
-
-  localStorage.setItem('mei_jwt', data.token);
-  await loginSuccess(data.user);
-}
-
-function demoLogin(){
-  document.getElementById('login-email').value = 'demo@meifacil.com.br';
-  document.getElementById('login-pass').value  = 'demo12345';
-  toast('Credenciais demo preenchidas! Clique em Entrar.', 'success');
-}
-
-async function loginSuccess(user){
-  state.user = user;
-  document.getElementById('auth-page').style.display = 'none';
-  document.getElementById('app').style.display = 'flex';
-  document.getElementById('user-badge').textContent = (user.name||'U')[0].toUpperCase();
-  updateTopbarDate();
-  const isDemo = (user.email||'').toLowerCase() === 'demo@meifacil.com.br';
-  const adminNav = document.getElementById('nav-adminseed');
-  if(adminNav) adminNav.style.display = isDemo ? 'flex' : 'none';
-  await loadAllData();
-  navigate('dashboard');
-  toast(`Bem-vindo(a), ${(user.name||'').split(' ')[0]}! 👋`,'success');
-}
-
-function logout(){
-  localStorage.removeItem('mei_jwt');
-  state.user = null;
-  showAuthPage();
-}
-
-// Auto-login se token ainda válido
-(async function(){
-  const token = localStorage.getItem('mei_jwt');
-  if(!token) return;
-  const data = await apiCall('/api/auth/me', 'GET', null, true);
-  if(data && data.user) {
-    await loginSuccess(data.user);
-  } else {
-    localStorage.removeItem('mei_jwt');
-  }
-})();
-
-// ══════════════════════════════════════
-// NAV
-// ══════════════════════════════════════
-const pageNames={dashboard:'Dashboard',clients:'Clientes',products:'Produtos & Serviços',sales:'Vendas',employees:'Funcionários',cashflow:'Fluxo de Caixa',reports:'Relatórios',notes:'Notas & Lembretes',settings:'Configurações',adminseed:'Admin (dados demo)'};
-async function navigate(page){
-  state.page=page;
-  document.getElementById('page-title').textContent=pageNames[page];
-  document.querySelectorAll('.nav-item').forEach(el=>el.classList.remove('active'));
-  const idx=['dashboard','clients','products','sales','employees','cashflow','reports','notes','settings','adminseed'].indexOf(page);
-  if(idx>=0)document.querySelectorAll('.nav-item')[idx].classList.add('active');
-  document.getElementById('sidebar').classList.remove('mobile-open');
-  await renderPage(page);
-}
-function toggleSidebar(){document.getElementById('sidebar').classList.toggle('collapsed');}
-function toggleMobile(){document.getElementById('sidebar').classList.toggle('mobile-open');}
-if(window.innerWidth<=768)document.getElementById('menu-btn').style.display='block';
-window.addEventListener('resize',()=>{document.getElementById('menu-btn').style.display=window.innerWidth<=768?'block':'none';});
-
-// ══════════════════════════════════════
-// HELPERS
-// ══════════════════════════════════════
-const R=v=>'R$ '+(+v).toFixed(2).replace('.',',').replace(/\B(?=(\d{3})+(?!\d))/g,'.');
-function fmt(d){
-  if(!d)return '—';
-  const s=String(d).substring(0,10);
-  const [y,m,day]=s.split('-');
-  if(!y||!m||!day||y.length!==4)return '—';
-  return `${day}/${m}/${y}`;
-}
-function updateTopbarDate(){
-  const d=new Date();
-  document.getElementById('topbar-date').textContent=d.toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'short',year:'numeric'});
-}
-function toast(msg,type='success'){
-  const el=document.getElementById('toast');
-  el.textContent=(type==='success'?'✅ ':type==='error'?'❌ ':'ℹ️ ')+msg;
-  el.className='toast show '+type;
-  clearTimeout(el._t);
-  el._t=setTimeout(()=>el.classList.remove('show'),3500);
-}
-function openModal(html,wide=false){
-  document.getElementById('modal-box').className='modal'+(wide?' modal-wide':'');
-  document.getElementById('modal-content').innerHTML=html;
-  document.getElementById('modal-overlay').classList.add('open');
-}
-function closeModal(e){
-  if(e&&e.target!==document.getElementById('modal-overlay'))return;
-  document.getElementById('modal-overlay').classList.remove('open');
-}
-function _closeModal(){closeModal({target:document.getElementById('modal-overlay')});}
-function payIcon(m){return PAY_METHODS[m]?.icon||'💳';}
-function payLabel(m){return PAY_METHODS[m]?.label||m;}
-
-// ══════════════════════════════════════
-// RENDER ROUTER
-// ══════════════════════════════════════
-async function renderPage(page){
-  const el=document.getElementById('content');
-  el.innerHTML = '<div style="text-align:center;padding:60px;color:var(--muted)">⏳ Carregando...</div>';
-  if(page==='clients')   await loadClients();
-  if(page==='products')  await loadProducts();
-  if(page==='sales')     await Promise.all([loadSales(), loadProducts(), loadClients(), loadEmployees()]);
-  if(page==='employees') await Promise.all([loadEmployees(), loadSales()]);
-  if(page==='cashflow')  await loadCashflow();
-  if(page==='dashboard') await Promise.all([loadDashboardStats(), loadSales(), loadCashflow()]);
-  if(page==='reports')   await Promise.all([loadSales(), loadProducts(), loadCashflow(), loadDashboardStats(), loadRevenueHistory(), loadEmployees()]);
-  ({dashboard:renderDashboard,clients:renderClients,products:renderProducts,
-    sales:renderSales,employees:renderEmployees,cashflow:renderCashflow,reports:renderReports,notes:renderNotes,settings:renderSettings,adminseed:renderAdminSeed}
-  [page]||renderDashboard)(el);
-}
-
-// ══════════════════════════════════════
-// DASHBOARD
-// ══════════════════════════════════════
-function renderDashboard(el){
-  const paidSales=state.sales.filter(s=>s.status==='paid');
-  const totalRevenue=paidSales.reduce((a,s)=>a+s.netTotal,0);
-  const totalProfit=paidSales.reduce((a,s)=>a+s.profit,0);
-  const totalOut=state.cashflow.filter(c=>c.type==='out').reduce((a,c)=>a+c.value,0);
-  const totalIn=state.cashflow.filter(c=>c.type==='in').reduce((a,c)=>a+c.value,0);
-  const LIMIT = currentLimit();
-  const pct=Math.min(100,(state.yearRevenue/LIMIT)*100);
-  const remaining=LIMIT-state.yearRevenue;
-  const alertClass=pct>=90?'danger':pct>=75?'warning':'';
-  const alertMsg=pct>=90
-    ?`⚠️ ATENÇÃO: Você está a apenas ${R(remaining)} do limite. Consulte um contador urgentemente.`
-    :pct>=75?`🔔 Atenção: Você atingiu ${pct.toFixed(0)}% do limite anual (${R(LIMIT)}). Fique atento.`:'';
-
-  const payBreakdown={};
-  paidSales.forEach(s=>{payBreakdown[s.payMethod]=(payBreakdown[s.payMethod]||0)+s.netTotal;});
-  const totalFees=paidSales.reduce((a,s)=>a+s.feeValue,0);
-
-  el.innerHTML=`
-    <div class="limit-card" title="${getBusinessLabel(state.businessType||'MEI')}">
-      <div class="limit-header">
-        <span class="limit-title">🏛️ ${getBusinessLabel(state.businessType||'MEI')} — ${new Date().getFullYear()}</span>
-        <span class="limit-pct ${pct>=90?'red':pct>=75?'amber':'green'}">${pct.toFixed(1)}%</span>
-      </div>
-      <div class="progress-track"><div class="progress-fill ${alertClass}" style="width:${pct}%"></div></div>
-      <div class="limit-info">
-        <span>Faturado: <strong>${R(state.yearRevenue)}</strong></span>
-        <span>Limite: <strong>${R(LIMIT)}</strong></span>
-        <span>Restante: <strong>${R(remaining)}</strong></span>
-        <button class="btn btn-ghost btn-sm" onclick="openEditRevenueModal()" style="margin-left:auto">✏️ Corrigir faturamento</button>
-      </div>
-      ${alertMsg?`<div class="alert-box ${pct<90?'alert-amber':''}">${alertMsg}</div>`:''}
-    </div>
-
-    <div class="cards-grid">
-      <div class="card card-metric"><div class="card-icon">💚</div><div class="card-label">Receita líquida (mês)</div><div class="card-value green">${R(totalRevenue)}</div><div class="card-sub">${paidSales.length} vendas pagas</div></div>
-      <div class="card card-metric"><div class="card-icon">💙</div><div class="card-label">Lucro estimado (mês)</div><div class="card-value blue">${R(totalProfit)}</div><div class="card-sub">Margem: ${totalRevenue>0?(totalProfit/totalRevenue*100).toFixed(1):0}%</div></div>
-      <div class="card card-metric"><div class="card-icon">❤️</div><div class="card-label">Despesas (mês)</div><div class="card-value red">${R(totalOut)}</div><div class="card-sub">${state.cashflow.filter(c=>c.type==='out').length} lançamentos</div></div>
-      <div class="card card-metric"><div class="card-icon">🏧</div><div class="card-label">Taxas máquina (mês)</div><div class="card-value amber">${R(totalFees)}</div><div class="card-sub">Cobradas pelas operadoras</div></div>
-    </div>
-
-    <div style="display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:24px">
-      <div class="card">
-        <div class="section-header"><span class="section-title">📊 Faturamento — últimos 6 meses</span></div>
-        <div class="bar-chart" id="bar-chart"><div style="text-align:center;padding:20px;color:var(--muted);font-size:13px;width:100%">Carregando...</div></div>
-      </div>
-      <div class="card">
-        <div class="section-title" style="margin-bottom:14px">💳 Por forma de pagamento</div>
-        ${Object.entries(payBreakdown).map(([m,v])=>`
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;font-size:13px">
-            <span>${payIcon(m)} ${payLabel(m)}</span>
-            <strong>${R(v)}</strong>
-          </div>`).join('')||'<span style="color:var(--muted);font-size:13px">Sem vendas ainda</span>'}
-        <hr style="border:none;border-top:1px solid var(--border);margin:12px 0"/>
-        <button class="btn btn-primary btn-sm" onclick="navigate('sales')" style="width:100%">+ Nova Venda</button>
-      </div>
-    </div>
-
-    <div class="section-header">
-      <span class="section-title">🛒 Últimas Vendas</span>
-      <button class="btn btn-ghost btn-sm" onclick="navigate('sales')">Ver tudo</button>
-    </div>
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>Data</th><th>Cliente</th><th>Itens</th><th>Pagamento</th><th>Total líquido</th><th>Status</th></tr></thead>
-        <tbody>
-          ${[...state.sales].sort((a,b)=>String(b.date).localeCompare(String(a.date))).slice(0,5).map(s=>`
-            <tr>
-              <td>${fmt(s.date)}</td>
-              <td>${s.clientName||'—'}</td>
-              <td>${s.items.map(i=>`${i.qty}x ${i.name}`).join(', ')}</td>
-              <td>${payIcon(s.payMethod)} ${payLabel(s.payMethod)}${s.feeValue>0?` <span style="color:var(--muted);font-size:11px">(-${R(s.feeValue)})</span>`:''}</td>
-              <td style="font-weight:600">${R(s.netTotal)}</td>
-              <td><span class="badge ${s.status==='paid'?'badge-green':'badge-amber'}">${s.status==='paid'?'✅ Pago':'⏳ Pendente'}</span></td>
-            </tr>`).join('')}
-        </tbody>
-      </table>
-    </div>
-  `;
-
-  renderMonthlyChart();
-}
-
-async function renderMonthlyChart(){
-  const data = await apiCall(`/api/reports/annual?year=${new Date().getFullYear()}`);
-  const barEl=document.getElementById('bar-chart');
-  if(!barEl)return;
-  const monthNames=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
-  const now=new Date();
-  const months=[];
-  for(let i=5;i>=0;i--){
-    const d=new Date(now.getFullYear(),now.getMonth()-i,1);
-    months.push({key:`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`,label:monthNames[d.getMonth()]});
-  }
-  const byMonth={};
-  (data||[]).forEach(r=>{byMonth[r.month]=+r.total_in;});
-  const vals=months.map(m=>byMonth[m.key]||0);
-  const maxVal=Math.max(...vals,1);
-  barEl.innerHTML=months.map((m,i)=>{
-    const h=Math.max(8,(vals[i]/maxVal)*100);
-    const isCurrent=i===months.length-1;
-    const color=isCurrent?'var(--blue-l)':'var(--border)';
-    return `<div class="bar-wrap"><span class="bar-val">${isCurrent?R(vals[i]).replace('R$ ',''):'R$'+Math.round(vals[i]/1000)+'k'}</span><div class="bar-col" style="height:${h}%;background:${color}"></div><span class="bar-label">${m.label}</span></div>`;
-  }).join('');
-}
-
-// ══════════════════════════════════════
-// REVENUE EDIT + AUDIT
-// ══════════════════════════════════════
-function openEditRevenueModal(){
-  openModal(`
-    <div class="modal-title">✏️ Corrigir Faturamento Anual</div>
-    <div style="background:var(--amber-x);border:1px solid var(--amber);border-radius:8px;padding:12px 16px;margin-bottom:16px;font-size:13px;color:var(--amber)">
-      ⚠️ Use apenas para corrigir valores lançados incorretamente. Todas as alterações ficam registradas no histórico de auditoria.
-    </div>
-    <div class="form-row">
-      <div class="form-group">
-        <label>Faturamento atual</label>
-        <input type="text" value="${R(state.yearRevenue)}" disabled style="background:var(--bg);color:var(--muted)"/>
-      </div>
-      <div class="form-group">
-        <label>Novo valor (R$)</label>
-        <input type="number" id="rev-new" step="0.01" min="0" value="${state.yearRevenue.toFixed(2)}" />
-      </div>
-    </div>
-    <div class="form-group">
-      <label>Motivo da correção <span style="color:var(--red)">*</span></label>
-      <textarea id="rev-reason" rows="3" placeholder="Ex: Venda duplicada lançada, valor digitado errado em 05/06..."></textarea>
-    </div>
-    <div class="form-group">
-      <label>Histórico de alterações</label>
-      <div style="max-height:180px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:8px">
-        ${state.revenueHistory.length?state.revenueHistory.slice().reverse().map(h=>`
-          <div class="history-entry ${h.action==='init'?'create':'edit'}">
-            <div style="display:flex;justify-content:space-between;margin-bottom:3px">
-              <strong>${h.action==='init'?'🟢 Registro inicial':'✏️ Correção'}</strong>
-              <span style="color:var(--muted);font-size:12px">${new Date(h.ts).toLocaleString('pt-BR')}</span>
-            </div>
-            ${h.before!==null?`<div>De: <strong>${R(h.before)}</strong> → Para: <strong>${R(h.after)}</strong></div>`:`<div>Valor: <strong>${R(h.after)}</strong></div>`}
-            <div style="color:var(--muted);font-size:12px;margin-top:2px">${h.reason}${h.user?` — <em>${h.user}</em>`:''}</div>
-          </div>`).join(''):'<span style="color:var(--muted);font-size:13px">Sem histórico</span>'}
-      </div>
-    </div>
-    <div class="form-actions">
-      <button class="btn btn-ghost" onclick="_closeModal()">Cancelar</button>
-      <button class="btn btn-primary" onclick="saveRevenueEdit()">💾 Salvar Correção</button>
-    </div>
-  `);
-}
-
-function saveRevenueEdit(){
-  const newVal=parseFloat(document.getElementById('rev-new').value);
-  const reason=document.getElementById('rev-reason').value.trim();
-  if(isNaN(newVal)||newVal<0)return toast('Informe um valor válido','error');
-  if(!reason)return toast('Informe o motivo da correção','error');
-  saveRevenueEditAsync(state.yearRevenue,newVal,reason);
-}
-async function saveRevenueEditAsync(before,after,reason){
-  const data = await apiCall('/api/revenue-audit','POST',{before_val:before,after_val:after,reason});
-  if(!data)return;
-  _closeModal();
-  toast('Faturamento corrigido e registrado no histórico!','success');
-  await Promise.all([loadDashboardStats(), loadRevenueHistory()]);
-  renderDashboard(document.getElementById('content'));
-}
-
-// ══════════════════════════════════════
-// CLIENTS
-// ══════════════════════════════════════
-// ══════════════════════════════════════
-// FUNCIONÁRIOS
-// ══════════════════════════════════════
-function renderEmployees(el){
-  el.innerHTML=`
-    <div class="section-header">
-      <span class="section-title">🧑‍💼 Funcionários (${state.employees.length})</span>
-      <button class="btn btn-primary btn-sm" onclick="openEmployeeModal()">+ Novo Funcionário</button>
-    </div>
-    ${renderPaymentReminders()}
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>Nome</th><th>Função</th><th>Salário</th><th>Dia pagto.</th><th>Telefone</th><th>Vendas (mês)</th><th>Ações</th></tr></thead>
-        <tbody>
-          ${state.employees.map(e=>{
-            const mesAtual = new Date().toISOString().slice(0,7);
-            const vendasMes = state.sales.filter(s=>s.status==='paid' && s.employeeId===e.id && s.date.startsWith(mesAtual));
-            return `<tr>
-              <td><span class="client-link" onclick="openEmployeeReport('${e.id}')">${e.name}</span></td>
-              <td style="color:var(--muted)">${e.role||'—'}</td>
-              <td>${R(e.salary)}</td>
-              <td>Dia ${e.paymentDay}</td>
-              <td>${e.phone||'—'}</td>
-              <td>${vendasMes.length} venda(s) · ${R(vendasMes.reduce((a,s)=>a+s.netTotal,0))}</td>
-              <td>
-                <button class="btn btn-ghost btn-sm" onclick="openEmployeeModal('${e.id}')">✏️</button>
-                <button class="btn btn-sm" style="background:var(--red-x);color:var(--red)" onclick="deleteEmployee('${e.id}')">🗑️</button>
-              </td>
-            </tr>`;
-          }).join('') || `<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:24px">Nenhum funcionário cadastrado ainda</td></tr>`}
-        </tbody>
-      </table>
-    </div>`;
-}
-
-// Mostra alerta com pagamentos de salário próximos (até 5 dias)
-function renderPaymentReminders(){
-  if(!state.employees.length) return '';
-  const today = new Date();
-  const currentDay = today.getDate();
-  const daysInMonth = new Date(today.getFullYear(), today.getMonth()+1, 0).getDate();
-  const upcoming = state.employees.map(e=>{
-    let diff = (e.paymentDay||5) - currentDay;
-    if(diff < 0) diff += daysInMonth;
-    return { ...e, diff };
-  }).filter(e=>e.diff<=5).sort((a,b)=>a.diff-b.diff);
-  if(!upcoming.length) return '';
-  return `<div class="alert-box" style="margin-bottom:16px;flex-direction:column;align-items:flex-start;gap:6px">
-    <strong>💰 Lembrete de pagamento</strong>
-    ${upcoming.map(e=>`<div>${e.diff===0?'📅 <strong>Hoje</strong>':`Em ${e.diff} dia(s)`} — pagar <strong>${R(e.salary)}</strong> para <strong>${e.name}</strong> (todo dia ${e.paymentDay})</div>`).join('')}
-  </div>`;
-}
-
-function openEmployeeModal(id){
-  const e=id?state.employees.find(x=>x.id===id):{};
-  openModal(`
-    <div class="modal-title">${id?'Editar':'Novo'} Funcionário</div>
-    <div class="form-row">
-      <div class="form-group"><label>Nome completo</label><input id="e-name" value="${e.name||''}" placeholder="Maria da Silva"/></div>
-      <div class="form-group"><label>Função</label><input id="e-role" value="${e.role||''}" placeholder="Ex: Vendedor, Caixa..."/></div>
-    </div>
-    <div class="form-row">
-      <div class="form-group"><label>Salário (R$)</label><input id="e-salary" type="number" step="0.01" min="0" value="${e.salary||''}" placeholder="1500.00"/></div>
-      <div class="form-group"><label>Dia de pagamento</label><input id="e-payday" type="number" min="1" max="31" value="${e.paymentDay||5}"/></div>
-    </div>
-    <div class="form-group"><label>Telefone</label><input id="e-phone" value="${e.phone||''}" placeholder="(67)99999-0000"/></div>
-    <div class="form-group"><label>Observações</label><textarea id="e-notes" rows="2" placeholder="Opcional">${e.notes||''}</textarea></div>
-    <div class="form-actions">
-      <button class="btn btn-ghost" onclick="_closeModal()">Cancelar</button>
-      <button class="btn btn-primary" onclick="saveEmployee(${id?`'${id}'`:'null'})">💾 Salvar</button>
-    </div>`);
-}
-function saveEmployee(id){
-  const obj={
-    name: document.getElementById('e-name').value.trim(),
-    role: document.getElementById('e-role').value.trim(),
-    salary: parseFloat(document.getElementById('e-salary').value)||0,
-    payment_day: parseInt(document.getElementById('e-payday').value)||5,
-    phone: document.getElementById('e-phone').value.trim(),
-    notes: document.getElementById('e-notes').value.trim(),
-  };
-  if(!obj.name) return toast('Nome é obrigatório','error');
-  saveEmployeeAsync(id,obj);
-}
-async function saveEmployeeAsync(id,obj){
-  const data = id
-    ? await apiCall(`/api/employees/${id}`,'PUT',obj)
-    : await apiCall('/api/employees','POST',obj);
-  if(!data)return;
-  _closeModal();
-  toast('Funcionário salvo! ✅');
-  await loadEmployees();
-  renderEmployees(document.getElementById('content'));
-}
-async function deleteEmployee(id){
-  if(!confirm('Remover este funcionário? O histórico de vendas dele será mantido.'))return;
-  await apiCall(`/api/employees/${id}`,'DELETE');
-  toast('Funcionário removido');
-  await loadEmployees();
-  renderEmployees(document.getElementById('content'));
-}
-
-function renderClients(el){
-  el.innerHTML=`
-    <div class="section-header">
-      <span class="section-title">👥 Clientes (${state.clients.length})</span>
-      <button class="btn btn-primary btn-sm" onclick="openClientModal()">+ Novo Cliente</button>
-    </div>
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>Nome</th><th>CPF</th><th>Telefone</th><th>E-mail</th><th>Cidade</th><th>Ações</th></tr></thead>
-        <tbody>
-          ${state.clients.map(c=>`<tr>
-            <td><span class="client-link" onclick="openClientReport('${c.id}')">${c.name}</span></td><td style="color:var(--muted)">${c.cpf||''}</td>
-            <td>${c.phone||''}</td><td>${c.email||''}</td><td>${c.city||''}</td>
-            <td>
-              <button class="btn btn-ghost btn-sm" onclick="openClientModal('${c.id}')">✏️</button>
-              <button class="btn btn-sm" style="background:var(--red-x);color:var(--red)" onclick="deleteClient('${c.id}')">🗑️</button>
-            </td>
-          </tr>`).join('')}
-        </tbody>
-      </table>
-    </div>`;
-}
-function openClientModal(id){
-  const c=id?state.clients.find(x=>x.id===id):{};
-  openModal(`
-    <div class="modal-title">${id?'Editar':'Novo'} Cliente</div>
-    <div class="form-row">
-      <div class="form-group"><label>Nome completo</label><input id="c-name" value="${c.name||''}" placeholder="Maria da Silva"/></div>
-      <div class="form-group"><label>CPF</label><input id="c-cpf" value="${c.cpf||''}" placeholder="000.000.000-00"/></div>
-    </div>
-    <div class="form-row">
-      <div class="form-group"><label>Telefone</label><input id="c-phone" value="${c.phone||''}" placeholder="(67)99999-0000"/></div>
-      <div class="form-group"><label>E-mail</label><input type="email" id="c-email" value="${c.email||''}" placeholder="cliente@email.com"/></div>
-    </div>
-    <div class="form-group"><label>Cidade</label><input id="c-city" value="${c.city||''}" placeholder="Campo Grande"/></div>
-    <div class="form-actions">
-      <button class="btn btn-ghost" onclick="_closeModal()">Cancelar</button>
-      <button class="btn btn-primary" onclick="saveClient(${id?`'${id}'`:'null'})">💾 Salvar</button>
-    </div>`);
-}
-function saveClient(id){
-  const obj={
-    name:document.getElementById('c-name').value.trim(),
-    cpf:document.getElementById('c-cpf').value.trim(),
-    phone:document.getElementById('c-phone').value.trim(),
-    email:document.getElementById('c-email').value.trim(),
-    city:document.getElementById('c-city').value.trim(),
-  };
-  if(!obj.name)return toast('Nome é obrigatório','error');
-  saveClientAsync(id,obj);
-}
-async function saveClientAsync(id,obj){
-  const data = id
-    ? await apiCall(`/api/clients/${id}`,'PUT',obj)
-    : await apiCall('/api/clients','POST',obj);
-  if(!data)return;
-  _closeModal();
-  toast('Cliente salvo!');
-  await loadClients();
-  renderClients(document.getElementById('content'));
-}
-function deleteClient(id){
-  if(!confirm('Remover este cliente?'))return;
-  deleteClientAsync(id);
-}
-async function deleteClientAsync(id){
-  const ok = await apiCall(`/api/clients/${id}`,'DELETE');
-  if(ok===null)return;
-  toast('Cliente removido');
-  await loadClients();
-  renderClients(document.getElementById('content'));
-}
-
-// ══════════════════════════════════════
-// PRODUCTS (with stock & variations)
-// ══════════════════════════════════════
-function renderProducts(el){
-  el.innerHTML=`
-    <div class="section-header">
-      <span class="section-title">📦 Produtos & Serviços (${state.products.length})</span>
-      <div style="display:flex;gap:8px">
-        <button class="btn btn-ghost btn-sm" onclick="openImportStockModal()" title="Importar estoque colando um texto">📋 Importar por Texto</button>
-        <button class="btn btn-primary btn-sm" onclick="openProductModal()">+ Novo Item</button>
-      </div>
-    </div>
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>Nome</th><th>Tipo</th><th>Custo base</th><th>Margem</th><th>Preço base</th><th>Variações</th><th>Estoque</th><th>Ações</th></tr></thead>
-        <tbody>
-          ${state.products.map(p=>`<tr>
-            <td><strong>${p.name}</strong></td>
-            <td><span class="badge ${p.type==='service'?'badge-blue':'badge-green'}">${p.type==='service'?'Serviço':'Produto'}</span></td>
-            <td>${R(p.cost)}</td>
-            <td><span class="badge badge-amber">${p.marginPct}%</span></td>
-            <td style="font-weight:700;color:var(--green-l)">${R(p.price)}</td>
-            <td>${p.variations && p.variations.length > 0 ? `<span class="badge badge-purple">${p.variations.length} variação(ões)</span>` : '<span style="color:var(--muted);font-size:12px">Nenhuma</span>'}</td>
-            <td>${p.type==='service'?'<span style="color:var(--muted);font-size:12px">N/A</span>':
-              (p.variations&&p.variations.length>0)?
-                p.variations.map(v=>`<div style="font-size:11px;white-space:nowrap">
-                  <span style="color:var(--muted)">${v.name}:</span>
-                  <span class="${(v.stock??0)<=5?'stock-low':'stock-ok'}">${v.stock??'∞'} un</span>
-                </div>`).join(''):
-                (p.stock??0)<=5?`<span class="stock-low">⚠️ ${p.stock??0} un</span>`:`<span class="stock-ok">${p.stock??0} un</span>`
-            }</td>
-            <td>
-              <button class="btn btn-ghost btn-sm" onclick="openProductModal('${p.id}')">✏️</button>
-              ${p.type==='product'?`<button class="btn btn-sm" style="background:var(--blue-x);color:var(--blue)" onclick="openStockModal('${p.id}')">📦</button>`:''}
-              <button class="btn btn-sm" style="background:var(--red-x);color:var(--red)" onclick="deleteProduct('${p.id}')">🗑️</button>
-            </td>
-          </tr>`).join('')}
-        </tbody>
-      </table>
-    </div>`;
-}
-function openProductModal(id){
-  const p=id?state.products.find(x=>x.id===id):{type:'service',marginPct:100,unit:'un',stock:0, variations:[]};
-  openModal(`
-    <div class="modal-title">${id?'Editar':'Novo'} Produto/Serviço</div>
-    <div class="form-group"><label>Nome Base</label><input id="p-name" value="${p.name||''}" placeholder="Ex: Pastel"/></div>
-    <div class="form-row">
-      <div class="form-group"><label>Tipo</label>
-        <select id="p-type" onchange="toggleStockField()">
-          <option value="service" ${p.type==='service'?'selected':''}>Serviço</option>
-          <option value="product" ${p.type==='product'?'selected':''}>Produto</option>
-        </select>
-      </div>
-      <div class="form-group"><label>Unidade</label><input id="p-unit" value="${p.unit||'un'}" placeholder="un, kg, m..."/></div>
-    </div>
-    <div class="form-row">
-      <div class="form-group"><label>Custo Base (R$)</label><input id="p-cost" type="number" min="0" step="0.01" value="${p.cost||0}" oninput="calcPrice()"/></div>
-      <div class="form-group"><label>Margem de Lucro (%)</label><input id="p-margin" type="number" min="0" value="${p.marginPct||100}" oninput="calcPrice()"/></div>
-    </div>
-    <div class="calc-box" id="calc-box">
-      <div class="calc-row"><span>Custo Base:</span><span id="calc-cost">R$ 0,00</span></div>
-      <div class="calc-row"><span id="calc-margin-lbl">Lucro Base:</span><span id="calc-profit">R$ 0,00</span></div>
-      <div class="calc-row total"><span>💰 Preço base sugerido:</span><span id="calc-price" style="color:var(--green-l)">R$ 0,00</span></div>
-    </div>
-    <div class="form-group" style="margin-top:12px"><label>Preço Base de Venda (R$)</label><input id="p-price" type="number" min="0" step="0.01" value="${p.price||0}"/></div>
-    
-    <div class="form-group" style="margin-top:12px; padding:12px; background:var(--bg); border-radius:8px;">
-      <label>Variações / Variações (Opcional)</label>
-      <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr auto;gap:8px;margin-bottom:4px;padding:0 2px">
-        <span style="font-size:11px;color:var(--muted);font-weight:600">NOME</span>
-        <span style="font-size:11px;color:var(--muted);font-weight:600">CUSTO R$</span>
-        <span style="font-size:11px;color:var(--muted);font-weight:600">PREÇO R$</span>
-        <span style="font-size:11px;color:var(--muted);font-weight:600">ESTOQUE</span>
-        <span></span>
-      </div>
-      <div id="p-variations-container" style="display:flex;flex-direction:column;gap:4px;margin-bottom:8px;">
-        ${(p.variations || []).map(v => getVariationRow(v.name, v.price, v.cost||'', v.stock!==null&&v.stock!==undefined?v.stock:'')).join('')}
-      </div>
-      <button type="button" class="btn btn-ghost btn-sm" onclick="addVariationRow()">+ Adicionar Variação</button>
-    </div>
-
-    <div id="stock-field" style="display:${(p.type==='product' && (!p.variations||p.variations.length===0))?'block':'none'}">
-      <div class="form-group" id="global-stock-wrap">
-        <label>Estoque geral do produto <span style="font-size:11px;color:var(--muted)">(usado quando não há variações)</span></label>
-        <input id="p-stock" type="number" min="0" value="${p.stock||0}"/>
-      </div>
-    </div>
-    <div class="form-actions">
-      <button class="btn btn-ghost" onclick="_closeModal()">Cancelar</button>
-      <button class="btn btn-primary" onclick="saveProduct(${id?`'${id}'`:'null'})">💾 Salvar</button>
-    </div>`);
-  setTimeout(calcPrice,50);
-  updateStockFieldVisibility();
-}
-function toggleStockField(){
-  updateStockFieldVisibility();
-}
-function updateStockFieldVisibility(){
-  const typeEl = document.getElementById('p-type');
-  const stockField = document.getElementById('stock-field');
-  const container = document.getElementById('p-variations-container');
-  if(!typeEl || !stockField || !container) return;
-  const hasVariations = container.querySelectorAll('.variation-row').length > 0;
-  stockField.style.display = (typeEl.value==='product' && !hasVariations) ? 'block' : 'none';
-}
-window.updateStockFieldVisibility = updateStockFieldVisibility;
-function calcPrice(){
-  const cost=parseFloat(document.getElementById('p-cost')?.value)||0;
-  const margin=parseFloat(document.getElementById('p-margin')?.value)||0;
-  const profit=cost*margin/100;
-  const price=cost+profit;
-  document.getElementById('calc-cost').textContent=R(cost);
-  document.getElementById('calc-profit').textContent=R(profit);
-  document.getElementById('calc-price').textContent=R(price);
-  document.getElementById('p-price').value=price.toFixed(2);
-  const lbl=document.getElementById('calc-margin-lbl');
-  if(lbl)lbl.textContent=`Lucro (${margin}%):`;
-}
-function saveProduct(id){
-  const type=document.getElementById('p-type').value;
-  
-  const varRows = document.querySelectorAll('.variation-row');
-  const variations = [];
-  varRows.forEach(row => {
-    const vName  = row.querySelector('.var-name').value.trim();
-    const vCost  = parseFloat(row.querySelector('.var-cost')?.value) || 0;
-    const vPrice = parseFloat(row.querySelector('.var-price').value);
-    const vStockRaw = row.querySelector('.var-stock')?.value;
-    const vStock = vStockRaw !== '' && vStockRaw !== undefined ? (parseInt(vStockRaw) || 0) : null;
-    if(vName && !isNaN(vPrice)) variations.push({ name: vName, cost: vCost, price: vPrice, stock: vStock });
-  });
-
-  const obj={
-    name:document.getElementById('p-name').value.trim(),
-    type,
-    unit:document.getElementById('p-unit').value.trim()||'un',
-    cost:parseFloat(document.getElementById('p-cost').value)||0,
-    margin_pct:parseFloat(document.getElementById('p-margin').value)||0,
-    price:parseFloat(document.getElementById('p-price').value)||0,
-    stock:(type==='product' && variations.length===0)?(parseInt(document.getElementById('p-stock')?.value)||0):null,
-    variations: variations
-  };
-  if(!obj.name)return toast('Nome é obrigatório','error');
-  if(!obj.price && obj.variations.length === 0)return toast('Informe o preço de venda ou crie variações','error');
-  saveProductAsync(id,obj);
-}
-async function saveProductAsync(id,obj){
-  const data = id
-    ? await apiCall(`/api/products/${id}`,'PUT',obj)
-    : await apiCall('/api/products','POST',obj);
-  if(!data)return;
-  _closeModal();
-  toast('Item salvo!');
-  await loadProducts();
-  renderProducts(document.getElementById('content'));
-}
-function deleteProduct(id){
-  if(!confirm('Remover este item?'))return;
-  deleteProductAsync(id);
-}
-async function deleteProductAsync(id){
-  const ok = await apiCall(`/api/products/${id}`,'DELETE');
-  if(ok===null)return;
-  toast('Item removido');
-  await loadProducts();
-  renderProducts(document.getElementById('content'));
-}
-function openStockModal(id){
-  const p=state.products.find(x=>x.id===id);
-  const hasVarStock = p.variations && p.variations.length > 0 && p.variations.some(v=>v.stock!==null&&v.stock!==undefined);
-
-  // Monta seção de variações com estoque individual
-  const varSection = hasVarStock ? `
-    <div style="margin-bottom:16px">
-      <label style="font-weight:600;display:block;margin-bottom:8px">Estoque por variação:</label>
-      ${p.variations.map((v,i)=>`
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--bg);border-radius:8px;margin-bottom:6px">
-          <span style="font-weight:600">${v.name}</span>
-          <div style="display:flex;align-items:center;gap:8px">
-            <span class="${(v.stock??0)<=5?'stock-low':'stock-ok'}" style="min-width:50px;text-align:right">${v.stock??0} un</span>
-            <input type="number" min="0" value="${v.stock??0}" id="var-stock-${i}"
-              style="width:70px;padding:4px 8px;border:1.5px solid var(--border);border-radius:6px;text-align:center"/>
-          </div>
-        </div>`).join('')}
-      <div style="font-size:12px;color:var(--muted);margin-top:4px">✏️ Edite diretamente o estoque de cada variação e clique em Salvar.</div>
-    </div>` : `
-    <div style="text-align:center;margin-bottom:16px">
-      <div style="font-size:36px;font-weight:700;color:var(--blue-l)">${p.stock??0} un</div>
-      <div style="color:var(--muted);font-size:13px">Estoque atual</div>
-    </div>
-    <div class="form-row">
-      <div class="form-group"><label>Tipo de ajuste</label>
-        <select id="stock-op">
-          <option value="in">➕ Entrada</option>
-          <option value="out">➖ Saída</option>
-          <option value="set">📌 Definir exato</option>
-        </select>
-      </div>
-      <div class="form-group"><label>Quantidade</label><input type="number" id="stock-qty" min="0" value="1"/></div>
-    </div>`;
-
-  openModal(`
-    <div class="modal-title">📦 Ajustar Estoque — ${p.name}</div>
-    ${varSection}
-    <div class="form-group"><label>Motivo</label><input id="stock-reason" placeholder="Reposição, perda, inventário..."/></div>
-    <div class="form-actions">
-      <button class="btn btn-ghost" onclick="_closeModal()">Cancelar</button>
-      <button class="btn btn-primary" onclick="${hasVarStock?`saveStockVariacoes('${id}')`:`saveStock('${id}')`}">💾 Confirmar</button>
-    </div>`);
-}
-function saveStock(id){
-  const mode=document.getElementById('stock-op').value;
-  const value=parseInt(document.getElementById('stock-qty').value);
-  if(isNaN(value)||value<0)return toast('Informe uma quantidade válida','error');
-  saveStockAsync(id,mode,value);
-}
-async function saveStockAsync(id,mode,value){
-  const data = await apiCall(`/api/products/${id}/stock`,'PATCH',{mode,value});
-  if(!data)return;
-  _closeModal();
-  toast(`Estoque atualizado: ${data.stock??0} un`,'success');
-  await loadProducts();
-  renderProducts(document.getElementById('content'));
-}
-
-// Salva estoque individual de cada variação
-async function saveStockVariacoes(id){
-  const p = state.products.find(x=>x.id===id);
-  if(!p) return;
-  const newVariations = p.variations.map((v,i)=>{
-    const input = document.getElementById(`var-stock-${i}`);
-    const newStock = input ? (parseInt(input.value)||0) : (v.stock??0);
-    return { ...v, stock: newStock };
-  });
-  // Salva via PUT do produto com variações atualizadas
-  const data = await apiCall(`/api/products/${id}`,'PUT',{
-    name: p.name, type: p.type, unit: p.unit,
-    cost: p.cost, margin_pct: p.marginPct, price: p.price,
-    stock: p.stock, variations: newVariations
-  });
-  if(!data) return;
-  _closeModal();
-  toast('Estoque das variações atualizado! ✅','success');
-  await loadProducts();
-  renderProducts(document.getElementById('content'));
-}
-
-// ══════════════════════════════════════
-// SALES — multi-item + payment method
-// ══════════════════════════════════════
-function renderSales(el){
-  const paid=state.sales.filter(s=>s.status==='paid');
-  const total=paid.reduce((a,s)=>a+s.netTotal,0);
-  const profit=paid.reduce((a,s)=>a+(s.profit-s.feeValue),0);
-  const fees=paid.reduce((a,s)=>a+s.feeValue,0);
-  el.innerHTML=`
-    <div class="cards-grid" style="margin-bottom:20px">
-      <div class="card card-metric"><div class="card-label">Total líquido (mês)</div><div class="card-value green">${R(total)}</div></div>
-      <div class="card card-metric"><div class="card-label">Lucro líquido (após taxas)</div><div class="card-value blue">${R(profit)}</div></div>
-      <div class="card card-metric"><div class="card-label">Taxas cobradas</div><div class="card-value amber">${R(fees)}</div></div>
-      <div class="card card-metric"><div class="card-label">Pendentes</div><div class="card-value amber">${state.sales.filter(s=>s.status==='pending').length}</div></div>
-    </div>
-    <div class="section-header">
-      <span class="section-title">🛒 Vendas</span>
-      <button class="btn btn-success btn-sm" onclick="openSaleModal()">+ Nova Venda</button>
-    </div>
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>Data</th><th>Hora</th><th>Cliente</th><th>Vendedor</th><th>Itens</th><th>Pagamento</th><th>Taxa</th><th>Total líq.</th><th>Lucro</th><th>Status</th><th>Ações</th></tr></thead>
-        <tbody>
-          ${[...state.sales].sort((a,b)=>String(b.date).localeCompare(String(a.date))).map(s=>`<tr>
-            <td>${fmt(s.date)}</td>
-            <td style="color:var(--muted)">${s.time||'—'}</td>
-            <td>${s.clientName||'<span style="color:var(--muted)">Avulso</span>'}</td>
-            <td style="color:var(--muted)">${s.employeeName||'—'}</td>
-            <td style="font-size:12px;color:var(--muted);max-width:160px">${s.items.map(i=>`${i.qty}× ${i.name}`).join('<br>')}</td>
-            <td>${payIcon(s.payMethod)} ${payLabel(s.payMethod)}</td>
-            <td style="color:var(--amber);font-size:12px">${s.feeValue>0?'-'+R(s.feeValue):'—'}</td>
-            <td style="font-weight:700">${R(s.netTotal)}</td>
-            <td style="font-weight:600;color:${s.status==='paid'&&(s.profit-s.feeValue)<0?'var(--red-l)':'var(--green-l)'}">${s.status==='paid'?R(s.profit-s.feeValue):'—'}</td>
-            <td><span class="badge ${s.status==='paid'?'badge-green':'badge-amber'}" style="cursor:pointer" onclick="toggleSaleStatus('${s.id}')">${s.status==='paid'?'✅ Pago':'⏳ Pendente'}</span></td>
-            <td style="white-space:nowrap">
-              <button class="btn btn-ghost btn-sm" onclick="viewSaleDetail('${s.id}')" title="Ver detalhes">👁️</button>
-              <button class="btn btn-sm" style="background:var(--red-x);color:var(--red)" onclick="deleteSale('${s.id}')">🗑️</button>
-            </td>
-          </tr>`).join('')}
-        </tbody>
-      </table>
-    </div>`;
-}
-
-// ── Sale Detail Modal ──
-function viewSaleDetail(id){
-  const s=state.sales.find(x=>x.id===id);
-  if(!s)return;
-  openModal(`
-    <div class="modal-title">🧾 Venda — ${fmt(s.date)}${s.time?' às '+s.time:''}</div>
-    <div style="margin-bottom:16px;display:flex;gap:12px;flex-wrap:wrap">
-      <div><span style="color:var(--muted);font-size:12px">CLIENTE</span><br><strong>${s.clientName||'Cliente avulso'}</strong></div>
-      ${s.employeeName?`<div><span style="color:var(--muted);font-size:12px">VENDEDOR</span><br><strong>${s.employeeName}</strong></div>`:''}
-      <div><span style="color:var(--muted);font-size:12px">STATUS</span><br><span class="badge ${s.status==='paid'?'badge-green':'badge-amber'}">${s.status==='paid'?'✅ Pago':'⏳ Pendente'}</span></div>
-      <div><span style="color:var(--muted);font-size:12px">PAGAMENTO</span><br>${payIcon(s.payMethod)} ${payLabel(s.payMethod)}</div>
-    </div>
-    <div class="sale-items-list">
-      <div class="sale-item-row sale-item-header"><span>Produto/Serviço</span><span>Qtd</span><span>Unit.</span><span>Subtotal</span><span></span></div>
-      ${s.items.map(i=>`
-        <div class="sale-item-row">
-          <span style="font-weight:600">${i.name}</span>
-          <span style="color:var(--muted)">${i.qty}</span>
-          <span>${R(i.unitPrice)}</span>
-          <span class="item-subtotal">${R(i.subtotal)}</span>
-          <span></span>
-        </div>`).join('')}
-    </div>
-    <div class="calc-box calc-green">
-      <div class="calc-row"><span>Subtotal bruto:</span><span>${R(s.total)}</span></div>
-      ${s.feeValue>0?`<div class="calc-row"><span>Taxa ${payLabel(s.payMethod)} (${s.feePct}%):</span><span style="color:var(--red-l)">-${R(s.feeValue)}</span></div>`:''}
-      <div class="calc-row total"><span>💰 Total recebido:</span><span style="color:var(--green-l)">${R(s.netTotal)}</span></div>
-      <div class="calc-row" style="margin-top:4px"><span>📈 Lucro líquido (após taxa):</span><span style="color:${(s.profit-s.feeValue)<0?'var(--red-l)':'var(--blue-l)'};font-weight:600">${R(s.profit-s.feeValue)}</span></div>
-    </div>
-    <div class="form-actions" style="margin-top:16px">
-      <button class="btn btn-ghost" onclick="_closeModal()">Fechar</button>
-      ${s.status==='pending'?`<button class="btn btn-success" onclick="toggleSaleStatus('${s.id}');_closeModal();">✅ Confirmar Pagamento</button>`:''}
-    </div>`,true);
-}
-
-// ── Sale Modal — multi-item ──
-let saleItems=[];
-let selectedPayMethod='dinheiro';
-
-function openSaleModal(){
-  saleItems=[];
-  selectedPayMethod='dinheiro';
-  selectedSaleProduct=null;
-  const today=new Date().toISOString().split('T')[0];
-  const nowHM=new Date().toTimeString().slice(0,5);
-  openModal(`
-    <div class="modal-title">🛒 Nova Venda</div>
-    <div class="form-row-3">
-      <div class="form-group"><label>Data</label><input type="date" id="s-date" value="${today}"/></div>
-      <div class="form-group"><label>Hora</label><input type="time" id="s-time" value="${nowHM}"/></div>
-      <div class="form-group"><label>Cliente (opcional)</label>
-        <select id="s-client">
-          <option value="">Cliente avulso</option>
-          ${state.clients.map(c=>`<option value="${c.id}">${c.name}</option>`).join('')}
-        </select>
-      </div>
-    </div>
-    ${state.employees.length ? `
-    <div class="form-group">
-      <label>Vendedor (opcional)</label>
-      <select id="s-employee">
-        <option value="">— Não informado —</option>
-        ${state.employees.map(e=>`<option value="${e.id}">${e.name}${e.role?' ('+e.role+')':''}</option>`).join('')}
-      </select>
-    </div>` : ''}
-
-    <div class="form-group">
-      <label>Itens da venda</label>
-      <div class="sale-items-list" id="items-list">
-        <div class="sale-item-row sale-item-header"><span>Produto/Serviço</span><span>Qtd</span><span>Unit. R$</span><span>Subtotal</span><span></span></div>
-        <div id="sale-rows"></div>
-        <div class="sale-item-add" style="flex-direction:column;gap:8px">
-          <!-- Linha 1: busca + select -->
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-            <!-- Campo de busca com dropdown -->
-            <div style="position:relative">
-              <input type="text" id="add-product-search" placeholder="🔍 Buscar produto..." autocomplete="off"
-                oninput="renderProductSearchResults()" onfocus="renderProductSearchResults()"
-                onblur="setTimeout(()=>{const r=document.getElementById('product-search-results'); if(r)r.style.display='none';},150)"
-                style="width:100%"/>
-              <div id="product-search-results" style="display:none;position:fixed;z-index:2000;background:var(--card);border:1.5px solid var(--border);border-radius:8px;max-height:220px;overflow-y:auto;box-shadow:var(--shadow)"></div>
-            </div>
-            <!-- Select tradicional -->
-            <select id="add-product-select" onchange="onSelectProduct(this.value)" style="width:100%">
-              <option value="">📋 Selecionar da lista...</option>
-              ${state.products.map(p=>`<option value="${p.id}">${p.name}${p.variations&&p.variations.length>0?' ('+p.variations.length+' var.)':' — '+R(p.price)}</option>`).join('')}
-            </select>
-          </div>
-          <!-- Linha 2: select de variação (aparece quando necessário) -->
-          <select id="add-variation" style="width:100%;display:none" onchange="onVariationSelectChange()">
-            <option value="">Escolha a variação...</option>
-          </select>
-          <!-- Linha 3: produto selecionado + botão -->
-          <div style="display:flex;gap:8px;align-items:center">
-            <div id="selected-product-badge" style="flex:1;font-size:12px;color:var(--muted);padding:6px 0">
-              Nenhum produto selecionado
-            </div>
-            <button class="btn btn-primary btn-sm" onclick="addSaleItem()">+ Adicionar</button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="calc-box" id="sale-summary" style="display:none">
-      <div class="calc-row"><span>📦 Total de itens:</span><span id="sum-qty">0</span></div>
-      <div class="calc-row"><span>💰 Subtotal bruto:</span><span id="sum-gross">R$ 0,00</span></div>
-      <div class="calc-row"><span>📈 Lucro estimado:</span><span id="sum-profit" style="color:var(--blue-l)">R$ 0,00</span></div>
-      <div id="fee-row-summary" style="display:none" class="calc-row"><span id="fee-label">Taxa:</span><span id="sum-fee" style="color:var(--red-l)">-R$ 0,00</span></div>
-      <div class="calc-row total"><span>✅ Total a receber:</span><span id="sum-net" style="color:var(--green-l)">R$ 0,00</span></div>
-    </div>
-
-    <div class="form-group" style="margin-top:16px">
-      <label>Forma de pagamento</label>
-      <div class="pay-methods" id="pay-methods-bar">
-        ${Object.entries(PAY_METHODS).map(([k,v])=>`
-          <div class="pay-pill ${k==='dinheiro'?'active green-pay':''}" onclick="selectPayMethod('${k}')" id="pill-${k}">
-            ${v.icon} ${v.label}
-          </div>`).join('')}
-      </div>
-      <div id="fee-config" style="display:none">
-        <div class="fee-row">
-          🏧 Taxa da máquina:
-          <input type="number" id="pay-fee" step="0.01" min="0" max="20" style="width:80px" value="0" oninput="updateSaleSummary()"/>
-          <span>%</span>
-          <span style="color:var(--muted);font-size:12px">(Configure conforme sua maquininha)</span>
-        </div>
-      </div>
-    </div>
-
-    <div class="form-group">
-      <label>Status</label>
-      <select id="s-status">
-        <option value="paid">✅ Pago agora</option>
-        <option value="pending">⏳ Pendente / Fiado</option>
-      </select>
-    </div>
-
-    <div id="troco-box" style="display:none;background:var(--green-x);border:1px solid var(--green-l);border-radius:10px;padding:16px;margin-bottom:4px">
-      <label style="font-weight:700;color:var(--green);margin-bottom:8px;display:block">💵 Calculadora de Troco</label>
-      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-        <div style="flex:1;min-width:120px">
-          <label style="font-size:12px;color:var(--muted);margin-bottom:4px;display:block">Valor recebido (R$)</label>
-          <input type="number" id="troco-recebido" min="0" step="0.01" placeholder="0,00"
-            style="width:100%;padding:9px 12px;border:1.5px solid var(--green-l);border-radius:8px;font-size:16px;font-weight:700"
-            oninput="calcTroco()"/>
-        </div>
-        <div style="flex:1;min-width:120px;text-align:center">
-          <div style="font-size:12px;color:var(--muted);margin-bottom:4px">Troco a devolver</div>
-          <div id="troco-valor" style="font-size:24px;font-weight:700;color:var(--green-l)">R$ 0,00</div>
-        </div>
-      </div>
-      <div id="troco-aviso" style="font-size:12px;color:var(--red-l);margin-top:6px;display:none">⚠️ Valor recebido menor que o total!</div>
-    </div>
-
-    <div class="form-actions">
-      <button class="btn btn-ghost" onclick="_closeModal()">Cancelar</button>
-      <button class="btn btn-success" id="btn-registrar-venda" onclick="saveSale()">💾 Registrar Venda</button>
-    </div>`,true);
-}
-
-// Remove acentos e baixa a caixa para facilitar a busca
-function normalizeSearch(s){
-  return (s||'').toString().normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
-}
-let selectedSaleProduct = null; // produto atualmente escolhido no autocomplete da venda
-
-// Monta a lista de resultados clicáveis abaixo do campo de busca
-function renderProductSearchResults(){
-  const input = document.getElementById('add-product-search');
-  const q = normalizeSearch(input?.value);
-  const box = document.getElementById('product-search-results');
-  if(!box || !input) return;
-  const matches = state.products.filter(p=>{
-    const matchesProduct = normalizeSearch(p.name).includes(q);
-    const matchesVariation = (p.variations||[]).some(v=>normalizeSearch(v.name).includes(q));
-    return matchesProduct || matchesVariation;
-  }).slice(0,40);
-
-  if(!matches.length){
-    box.innerHTML = `<div style="padding:10px 12px;color:var(--muted);font-size:13px">Nenhum produto encontrado</div>`;
-  } else {
-    box.innerHTML = matches.map(p=>{
-      const hasVars = p.variations && p.variations.length>0;
-      const sub = p.type==='service' ? 'Serviço' : (hasVars ? `${p.variations.length} variação(ões)` : `Estoque: ${p.stock??'∞'}`);
-      return `<div style="padding:9px 12px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px" onmousedown="selectSaleProduct('${p.id}')">
-        <div style="font-weight:600">${p.name}${hasVars?'':' — '+R(p.price)}</div>
-        <div style="font-size:11px;color:var(--muted)">${sub}</div>
-      </div>`;
-    }).join('');
-  }
-
-  // Posiciona o dropdown com base na posição real do input na tela (fixed),
-  // pra não ser cortado por containers com overflow:hidden/auto (ex: o modal e a lista de itens)
-  const rect = input.getBoundingClientRect();
-  box.style.top   = (rect.bottom + 4) + 'px';
-  box.style.left  = rect.left + 'px';
-  box.style.width = rect.width + 'px';
-  box.style.display = 'block';
-  attachSearchResultsScrollGuard();
-}
-
-// Reposiciona (em vez de fechar) o dropdown quando a página/modal rola — e ignora
-// o próprio scroll da lista de resultados, senão rolar a lista fecha ela sozinha
-let _searchScrollGuardAttached = false;
-function attachSearchResultsScrollGuard(){
-  if(_searchScrollGuardAttached) return;
-  _searchScrollGuardAttached = true;
-  window.addEventListener('scroll', (e)=>{
-    const box = document.getElementById('product-search-results');
-    if(!box || box.style.display==='none') return;
-    if(box.contains(e.target)) return; // rolando a própria lista — não faz nada
-    const input = document.getElementById('add-product-search');
-    if(!input) return;
-    const rect = input.getBoundingClientRect();
-    box.style.top   = (rect.bottom + 4) + 'px';
-    box.style.left  = rect.left + 'px';
-    box.style.width = rect.width + 'px';
-  }, true);
-}
-
-// Usuário escolheu produto pelo select tradicional
-function onSelectProduct(pid){
-  if(!pid) return;
-  selectSaleProduct(pid);
-  // Limpa o select para não ficar "preso" na opção
-  document.getElementById('add-product-select').value = '';
-}
-
-// Usuário clicou num resultado da busca
-function selectSaleProduct(pid){
-  const p = state.products.find(x=>x.id===pid);
-  if(!p) return;
-  selectedSaleProduct = p;
-  document.getElementById('add-product-search').value = '';
-  document.getElementById('product-search-results').style.display = 'none';
-  const badge = document.getElementById('selected-product-badge');
-  if(badge) badge.innerHTML = `<span style="background:var(--blue-x);color:var(--blue-l);padding:3px 10px;border-radius:20px;font-weight:600">✅ ${p.name}</span>`;
-
-  const varSel = document.getElementById('add-variation');
-  const variations = p.variations || [];
-  if(variations.length > 0){
-    varSel.innerHTML = '<option value="">Escolha a variação...</option>' +
-      variations.map(v =>
-        `<option value="${v.name}" data-price="${v.price}" data-cost="${v.cost||0}" data-stock="${v.stock!==null&&v.stock!==undefined?v.stock:''}">${v.name} — ${R(v.price)}${v.stock!==null&&v.stock!==undefined?' (est: '+v.stock+')':''}</option>`
-      ).join('');
-    varSel.style.display = 'block';
-  } else {
-    varSel.style.display = 'none';
-    varSel.innerHTML = '<option value="">Escolha a variação...</option>';
-  }
-}
-
-// Quando muda a variação — não faz nada além de manter a seleção (preço lido no addSaleItem)
-function onVariationSelectChange(){ /* reservado para expansão futura */ }
-
-function addSaleItem(){
-  const p = selectedSaleProduct;
-  if(!p) return toast('Busque e selecione um produto','error');
-
-  const varSel = document.getElementById('add-variation');
-  const variations = p.variations || [];
-  let itemName, itemPrice, itemCost = p.cost||0, varName = null;
-
-  if(variations.length > 0){
-    const varOpt = varSel.selectedOptions[0];
-    if(!varOpt || !varOpt.value) return toast('Selecione a variação','error');
-    varName   = varOpt.value;
-    itemName  = p.name + ' — ' + varOpt.value;
-    itemPrice = parseFloat(varOpt.dataset.price)||0;
-    itemCost  = parseFloat(varOpt.dataset.cost)||0; // custo específico da variação
-  } else {
-    itemName  = p.name;
-    itemPrice = parseFloat(p.price)||0;
-    itemCost  = p.cost||0; // custo do produto pai
-  }
-
-  // Checa estoque — usa estoque da variação se disponível, senão usa o geral do produto
-  let estoqueDisp = p.stock;
-  if(variations.length > 0){
-    const varOpt2 = varSel.selectedOptions[0];
-    const varStockRaw = varOpt2?.dataset?.stock;
-    estoqueDisp = (varStockRaw !== '' && varStockRaw !== undefined && varStockRaw !== 'null') ? parseInt(varStockRaw) : null;
-  }
-  if(p.type==='product' && estoqueDisp !== null){
-    const noCarrinho = saleItems.filter(i=>i.productId===p.id && i.name===itemName).reduce((a,i)=>a+i.qty,0);
-    if(noCarrinho + 1 > estoqueDisp) return toast(`Estoque insuficiente para "${itemName}" (${estoqueDisp} un disponíveis, ${noCarrinho} já no carrinho)`,'error');
-  }
-
-  // Adiciona ou incrementa
-  const existing = saleItems.find(i => i.productId===p.id && i.name===itemName);
-  if(existing){
-    existing.qty++;
-    existing.subtotal = +(existing.qty * existing.unitPrice).toFixed(2);
-  } else {
-    saleItems.push({ productId:p.id, variationName:varName, name:itemName, qty:1, unitPrice:itemPrice, cost:itemCost, subtotal:itemPrice });
-  }
-
-  // Reseta a busca e os selects
-  selectedSaleProduct = null;
-  document.getElementById('add-product-search').value = '';
-  const badge = document.getElementById('selected-product-badge');
-  if(badge) badge.innerHTML = 'Nenhum produto selecionado';
-  if(badge) badge.style.color = 'var(--muted)';
-  varSel.style.display = 'none';
-  varSel.innerHTML = '<option value="">Escolha a variação...</option>';
-
-  renderSaleRows();
-  updateSaleSummary();
-}
-
-function renderSaleRows(){
-  const el=document.getElementById('sale-rows');
-  if(!el)return;
-  el.innerHTML=saleItems.map((item,idx)=>`
-    <div class="sale-item-row">
-      <span style="font-weight:600;font-size:13px">${item.name}</span>
-      <input type="number" min="1" value="${item.qty}" style="width:60px;padding:4px 8px;font-size:13px" oninput="updateItemQty(${idx},this.value)"/>
-      <input type="number" min="0" step="0.01" value="${item.unitPrice}" style="width:100%;padding:4px 6px;font-size:13px" oninput="updateItemPrice(${idx},this.value)" title="Editar preço (ex: desconto)"/>
-      <span class="item-subtotal">${R(item.subtotal)}</span>
-      <button class="remove-item-btn" onclick="removeSaleItem(${idx})">×</button>
-    </div>`).join('');
-  document.getElementById('sale-summary').style.display=saleItems.length?'block':'none';
-}
-
-function updateItemQty(idx,val){
-  const qty=Math.max(1,parseInt(val)||1);
-  const item=saleItems[idx];
-  if(!item)return;
-
-  // Checa estoque — variação específica ou produto geral
-  const p=state.products.find(x=>x.id===item.productId);
-  if(p&&p.type==='product'){
-    let estoqueDisp = null;
-    if(item.variationName && p.variations){
-      const v=p.variations.find(v=>v.name===item.variationName);
-      if(v&&v.stock!==null&&v.stock!==undefined) estoqueDisp=+v.stock;
-    } else if(p.stock!==null&&p.stock!==undefined){
-      estoqueDisp=+p.stock;
-    }
-    if(estoqueDisp!==null && qty>estoqueDisp){
-      toast(`Estoque insuficiente: ${estoqueDisp} un disponíveis`,'error');
-      // Reverte o input para o valor máximo
-      const input=document.querySelectorAll('.sale-item-row input[type="number"]')[idx];
-      if(input) input.value=estoqueDisp;
-      return;
-    }
-  }
-
-  item.qty=qty;
-  item.subtotal=+(qty*item.unitPrice).toFixed(2);
-
-  // Atualiza o span de subtotal direto na linha sem re-renderizar tudo
-  const rows=document.querySelectorAll('#sale-rows .sale-item-row');
-  if(rows[idx]){
-    const subtotalSpan=rows[idx].querySelector('.item-subtotal');
-    if(subtotalSpan) subtotalSpan.textContent=R(item.subtotal);
-  }
-
-  updateSaleSummary();
-}
-
-function updateItemPrice(idx,val){
-  const price = Math.max(0, parseFloat(val)||0);
-  const item = saleItems[idx];
-  if(!item) return;
-
-  item.unitPrice = price;
-  item.subtotal = +(item.qty * price).toFixed(2);
-
-  // Atualiza o subtotal direto na linha sem re-renderizar tudo (senão o input perde o foco)
-  const rows = document.querySelectorAll('#sale-rows .sale-item-row');
-  if(rows[idx]){
-    const subtotalSpan = rows[idx].querySelector('.item-subtotal');
-    if(subtotalSpan) subtotalSpan.textContent = R(item.subtotal);
-  }
-
-  updateSaleSummary();
-}
-
-function removeSaleItem(idx){
-  saleItems.splice(idx,1);
-  renderSaleRows();
-  updateSaleSummary();
-}
-
-function selectPayMethod(method){
-  selectedPayMethod=method;
-  document.querySelectorAll('.pay-pill').forEach(p=>p.classList.remove('active','green-pay'));
-  const pill=document.getElementById(`pill-${method}`);
-  if(pill){pill.classList.add('active');if(method==='dinheiro'||method==='boleto')pill.classList.add('green-pay');}
-  const feeConfig=document.getElementById('fee-config');
-  const pm=PAY_METHODS[method];
-  if(pm.hasFee){
-    feeConfig.style.display='block';
-    const saved=state.payFees[method];
-    document.getElementById('pay-fee').value=(saved!==undefined?saved:pm.defaultFee).toFixed(2);
-  }else{
-    feeConfig.style.display='none';
-  }
-  const trocoBox=document.getElementById('troco-box');
-  if(trocoBox){
-    trocoBox.style.display = method==='dinheiro' ? 'block' : 'none';
-    if(method==='dinheiro'){
-      const rec=document.getElementById('troco-recebido');
-      if(rec) rec.value='';
-      calcTroco();
-    }
-  }
-  updateSaleSummary();
-}
-
-function updateSaleSummary(){
-  const gross=saleItems.reduce((a,i)=>a+i.subtotal,0);
-  const totalQty=saleItems.reduce((a,i)=>a+i.qty,0);
-  const profit=saleItems.reduce((a,i)=>a+(i.subtotal-i.cost*i.qty),0);
-  const pm=PAY_METHODS[selectedPayMethod];
-  const feePct=pm.hasFee?(parseFloat(document.getElementById('pay-fee')?.value)||0):0;
-  const feeVal=+(gross*feePct/100).toFixed(2);
-  const net=+(gross-feeVal).toFixed(2);
-  const sumQty=document.getElementById('sum-qty');
-  const sumGross=document.getElementById('sum-gross');
-  const sumProfit=document.getElementById('sum-profit');
-  const sumFee=document.getElementById('sum-fee');
-  const sumNet=document.getElementById('sum-net');
-  const feeRow=document.getElementById('fee-row-summary');
-  const feeLabel=document.getElementById('fee-label');
-  if(sumQty)sumQty.textContent=`${totalQty} un`;
-  if(sumGross)sumGross.textContent=R(gross);
-  if(sumProfit)sumProfit.textContent=R(profit);
-  if(feeRow)feeRow.style.display=feePct>0?'flex':'none';
-  if(feeLabel)feeLabel.textContent=`Taxa ${payLabel(selectedPayMethod)} (${feePct}%):`;
-  if(sumFee)sumFee.textContent=`-${R(feeVal)}`;
-  if(sumNet)sumNet.textContent=R(net);
-}
-
-function calcTroco(){
-  const rec = parseFloat(document.getElementById('troco-recebido')?.value)||0;
-  const netEl = document.getElementById('sum-net');
-  const net = netEl ? parseFloat(netEl.textContent.replace(/[R$\s.]/g,'').replace(',','.')) || 0 : 0;
-  const troco = rec - net;
-  const trocoEl  = document.getElementById('troco-valor');
-  const avisoEl  = document.getElementById('troco-aviso');
-  if(trocoEl){
-    trocoEl.textContent = R(Math.max(0, troco));
-    trocoEl.style.color = troco < 0 ? 'var(--red-l)' : 'var(--green-l)';
-  }
-  if(avisoEl) avisoEl.style.display = (rec > 0 && troco < 0) ? 'block' : 'none';
-}
-
-function saveSale(){
-  if(!saleItems.length)return toast('Adicione pelo menos um item','error');
-
-  const btn = document.getElementById('btn-registrar-venda');
-  if(btn){
-    if(btn.disabled) return;
-    btn.disabled = true;
-    btn.textContent = '⏳ Salvando...';
-  }
-
-  const feePct=PAY_METHODS[selectedPayMethod].hasFee?(parseFloat(document.getElementById('pay-fee')?.value)||0):0;
-  const clientId=document.getElementById('s-client').value||null;
-  const client=clientId?state.clients.find(c=>c.id===clientId):null;
-  const employeeId=document.getElementById('s-employee')?.value||null;
-  const employee=employeeId?state.employees.find(e=>e.id===employeeId):null;
-  const status=document.getElementById('s-status').value;
-  const date=document.getElementById('s-date').value;
-  const time=document.getElementById('s-time')?.value || '';
-
-  const payload={
-    client_id:clientId,
-    client_name:client?client.name:'Cliente avulso',
-    employee_id:employeeId,
-    employee_name:employee?employee.name:null,
-    items:saleItems.map(i=>({
-      product_id:i.productId, product_name:i.name, variation_name:i.variationName||null, qty:i.qty, unit_price:i.unitPrice, cost:i.cost,
-    })),
-    pay_method:selectedPayMethod, fee_pct:feePct, status, sale_date:date, sale_time:time,
-  };
-  saveSaleAsync(payload, btn);
-}
-async function saveSaleAsync(payload, btn){
-  try {
-    const data = await apiCall('/api/sales','POST',payload);
-    if(!data){
-      if(btn){ btn.disabled=false; btn.textContent='💾 Registrar Venda'; }
-      return;
-    }
-    if(PAY_METHODS[payload.pay_method].hasFee)state.payFees[payload.pay_method]=payload.fee_pct;
-    _closeModal();
-    // Atualiza estoque local no state para refletir a baixa imediatamente
-    payload.items.forEach(it => {
-      const prod = state.products.find(p => p.id === it.product_id);
-      if(!prod || prod.type !== 'product') return;
-      if(it.variation_name && prod.variations){
-        const v = prod.variations.find(v => v.name === it.variation_name);
-        if(v && v.stock !== null && v.stock !== undefined){
-          v.stock = Math.max(0, (+v.stock||0) - it.qty);
-        }
-      } else if(prod.stock !== null && prod.stock !== undefined){
-        prod.stock = Math.max(0, (+prod.stock||0) - it.qty);
-      }
-    });
-    toast(`Venda registrada! ${R(data.net_total)} via ${payLabel(payload.pay_method)}`,'success');
-    await Promise.all([loadSales(), loadProducts(), loadDashboardStats()]);
-    renderSales(document.getElementById('content'));
-  } catch(e) {
-    if(btn){ btn.disabled=false; btn.textContent='💾 Registrar Venda'; }
-    toast('Erro ao registrar venda','error');
-  }
-}
-
-function toggleSaleStatus(id){
-  const s=state.sales.find(x=>x.id===id);
-  if(!s)return;
-  const newStatus = s.status==='pending' ? 'paid' : 'pending';
-  toggleSaleStatusAsync(id,newStatus);
-}
-async function toggleSaleStatusAsync(id,newStatus){
-  const data = await apiCall(`/api/sales/${id}/status`,'PATCH',{status:newStatus});
-  if(!data)return;
-  toast(newStatus==='paid'?'Pagamento confirmado! ✅':'Venda marcada como pendente');
-  await Promise.all([loadSales(), loadDashboardStats()]);
-  renderSales(document.getElementById('content'));
-}
-
-function deleteSale(id){
-  if(!confirm('Remover esta venda?'))return;
-  deleteSaleAsync(id);
-}
-async function deleteSaleAsync(id){
-  const ok = await apiCall(`/api/sales/${id}`,'DELETE');
-  if(ok===null)return;
-  toast('Venda removida');
-  await loadSales();
-  renderSales(document.getElementById('content'));
-}
-
-// ══════════════════════════════════════
-// CASHFLOW — with edit + audit history
-// ══════════════════════════════════════
-function renderCashflow(el){
-  const totalIn=state.cashflow.filter(c=>c.type==='in').reduce((a,c)=>a+c.value,0);
-  const totalOut=state.cashflow.filter(c=>c.type==='out').reduce((a,c)=>a+c.value,0);
-  const balance=totalIn-totalOut;
-  el.innerHTML=`
-    <div class="cards-grid" style="margin-bottom:20px">
-      <div class="card card-metric"><div class="card-label">Entradas</div><div class="card-value green">${R(totalIn)}</div></div>
-      <div class="card card-metric"><div class="card-label">Saídas</div><div class="card-value red">${R(totalOut)}</div></div>
-      <div class="card card-metric"><div class="card-label">Saldo</div><div class="card-value ${balance>=0?'green':'red'}">${R(balance)}</div></div>
-    </div>
-    <div class="section-header">
-      <span class="section-title">💰 Fluxo de Caixa</span>
-      <button class="btn btn-primary btn-sm" onclick="openCashModal()">+ Lançamento</button>
-    </div>
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>Data</th><th>Descrição</th><th>Tipo</th><th>Valor</th><th>Histórico</th><th>Ações</th></tr></thead>
-        <tbody>
-          ${[...state.cashflow].sort((a,b)=>String(b.date).localeCompare(String(a.date))).map(c=>`<tr>
-            <td>${fmt(c.date)}</td>
-            <td>${c.desc}${c.saleId?` <span style="font-size:11px;color:var(--muted)">#venda</span>`:''}</td>
-            <td><span class="badge ${c.type==='in'?'badge-green':'badge-red'}">${c.type==='in'?'▲ Entrada':'▼ Saída'}</span></td>
-            <td style="font-weight:700;color:${c.type==='in'?'var(--green-l)':'var(--red-l)'}">${c.type==='in'?'+':'-'}${R(c.value)}</td>
-            <td>${c.history&&c.history.length?`<span class="badge badge-amber" style="cursor:pointer" onclick="viewCashHistory('${c.id}')">📋 ${c.history.length} edição${c.history.length>1?'ões':''}</span>`:'<span style="color:var(--muted);font-size:12px">—</span>'}</td>
-            <td style="white-space:nowrap">
-              <button class="btn btn-ghost btn-sm" onclick="openEditCashModal('${c.id}')" title="Editar valor">✏️</button>
-              <button class="btn btn-sm" style="background:var(--red-x);color:var(--red)" onclick="deleteCash('${c.id}')">🗑️</button>
-            </td>
-          </tr>`).join('')}
-        </tbody>
-      </table>
-    </div>`;
-}
-
-function openCashModal(){
-  const today=new Date().toISOString().split('T')[0];
-  openModal(`
-    <div class="modal-title">💰 Novo Lançamento</div>
-    <div class="form-group"><label>Data</label><input type="date" id="cf-date" value="${today}"/></div>
-    <div class="form-group"><label>Descrição</label><input id="cf-desc" placeholder="Ex: Aluguel, fornecedor, venda..."/></div>
-    <div class="form-row">
-      <div class="form-group"><label>Tipo</label>
-        <select id="cf-type">
-          <option value="in">▲ Entrada</option>
-          <option value="out">▼ Saída</option>
-        </select>
-      </div>
-      <div class="form-group"><label>Valor (R$)</label><input id="cf-value" type="number" min="0" step="0.01" placeholder="0,00"/></div>
-    </div>
-    <div class="form-actions">
-      <button class="btn btn-ghost" onclick="_closeModal()">Cancelar</button>
-      <button class="btn btn-primary" onclick="saveCash()">💾 Salvar</button>
-    </div>`);
-}
-function saveCash(){
-  const desc=document.getElementById('cf-desc').value.trim();
-  const value=parseFloat(document.getElementById('cf-value').value)||0;
-  if(!desc)return toast('Descrição é obrigatória','error');
-  if(!value)return toast('Informe o valor','error');
-  const payload={
-    description:desc, value,
-    type:document.getElementById('cf-type').value,
-    entry_date:document.getElementById('cf-date').value,
-  };
-  saveCashAsync(payload);
-}
-async function saveCashAsync(payload){
-  const data = await apiCall('/api/cashflow','POST',payload);
-  if(!data)return;
-  _closeModal();
-  toast('Lançamento salvo!');
-  await Promise.all([loadCashflow(), loadDashboardStats()]);
-  renderCashflow(document.getElementById('content'));
-}
-
-// ── Edit cashflow entry with audit ──
-function openEditCashModal(id){
-  const c=state.cashflow.find(x=>x.id===id);
-  if(!c)return;
-  openModal(`
-    <div class="modal-title">✏️ Editar Lançamento</div>
-    <div style="background:var(--amber-x);border:1px solid var(--amber);border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:13px;color:var(--amber)">
-      ⚠️ Alterar um lançamento registra a mudança no histórico de auditoria.
-    </div>
-    <div class="form-group"><label>Descrição</label><input id="ec-desc" value="${c.desc}"/></div>
-    <div class="form-row">
-      <div class="form-group"><label>Valor atual</label>
-        <input type="text" value="${R(c.value)}" disabled style="background:var(--bg);color:var(--muted)"/>
-      </div>
-      <div class="form-group"><label>Novo valor (R$)</label>
-        <input type="number" id="ec-value" step="0.01" min="0" value="${c.value.toFixed(2)}"/>
-      </div>
-    </div>
-    <div class="form-group"><label>Motivo da correção <span style="color:var(--red)">*</span></label>
-      <textarea id="ec-reason" rows="2" placeholder="Ex: Valor digitado errado, nota fiscal diferente..."></textarea>
-    </div>
-    <div class="form-actions">
-      <button class="btn btn-ghost" onclick="_closeModal()">Cancelar</button>
-      <button class="btn btn-primary" onclick="saveEditCash('${id}')">💾 Salvar</button>
-    </div>`);
-}
-function saveEditCash(id){
-  const newVal=parseFloat(document.getElementById('ec-value').value);
-  const reason=document.getElementById('ec-reason').value.trim();
-  const newDesc=document.getElementById('ec-desc').value.trim();
-  if(isNaN(newVal)||newVal<=0)return toast('Valor inválido','error');
-  if(!reason)return toast('Informe o motivo da correção','error');
-  saveEditCashAsync(id,{value:newVal,description:newDesc,reason,user_name:state.user?.name||'Usuário'});
-}
-async function saveEditCashAsync(id,payload){
-  const data = await apiCall(`/api/cashflow/${id}`,'PATCH',payload);
-  if(!data)return;
-  _closeModal();
-  toast('Lançamento corrigido e auditado!','success');
-  await Promise.all([loadCashflow(), loadDashboardStats()]);
-  renderCashflow(document.getElementById('content'));
-}
-
-function viewCashHistory(id){
-  const c=state.cashflow.find(x=>x.id===id);
-  if(!c||!c.history?.length)return;
-  openModal(`
-    <div class="modal-title">📋 Histórico de Alterações</div>
-    <div style="margin-bottom:12px;font-size:13px;color:var(--muted)">${c.desc}</div>
-    ${c.history.slice().reverse().map(h=>`
-      <div class="history-entry edit">
-        <div style="display:flex;justify-content:space-between;margin-bottom:4px">
-          <strong>✏️ Correção de valor</strong>
-          <span style="color:var(--muted);font-size:12px">${new Date(h.ts).toLocaleString('pt-BR')}</span>
-        </div>
-        <div>De <strong>${R(h.before)}</strong> → Para <strong>${R(h.after)}</strong></div>
-        <div style="color:var(--muted);font-size:12px;margin-top:2px">Motivo: ${h.reason}${h.user?` — <em>${h.user}</em>`:''}</div>
-      </div>`).join('')}
-    <div class="form-actions"><button class="btn btn-ghost" onclick="_closeModal()">Fechar</button></div>`);
-}
-
-function deleteCash(id){
-  if(!confirm('Remover este lançamento?'))return;
-  deleteCashAsync(id);
-}
-async function deleteCashAsync(id){
-  const ok = await apiCall(`/api/cashflow/${id}`,'DELETE');
-  if(ok===null)return;
-  toast('Lançamento removido');
-  await Promise.all([loadCashflow(), loadDashboardStats()]);
-  renderCashflow(document.getElementById('content'));
-}
-
-// ══════════════════════════════════════
-// REPORTS
-// ══════════════════════════════════════
-function renderReports(el){
-  const totalIn=state.cashflow.filter(c=>c.type==='in').reduce((a,c)=>a+c.value,0);
-  const totalOut=state.cashflow.filter(c=>c.type==='out').reduce((a,c)=>a+c.value,0);
-  const profit=totalIn-totalOut;
-  const salesByProd={};
-  state.sales.forEach(s=>s.items.forEach(i=>{salesByProd[i.name]=(salesByProd[i.name]||0)+i.subtotal;}));
-  const topSales=Object.entries(salesByProd).sort((a,b)=>b[1]-a[1]).slice(0,5);
-  el.innerHTML=`
-    <div class="tabs" id="report-tabs">
-      <div class="tab active" onclick="reportTab('geral',this)">📊 Geral</div>
-      <div class="tab" onclick="reportTab('produtos',this)">📦 Por Produto</div>
-      <div class="tab" onclick="reportTab('pagamentos',this)">💳 Pagamentos</div>
-      <div class="tab" onclick="reportTab('clientes',this)">👤 Clientes</div>
-      ${state.employees.length?`<div class="tab" onclick="reportTab('vendedores',this)">🧑‍💼 Vendedores</div>`:''}
-      <div class="tab" onclick="reportTab('mei',this)">🏛️ MEI</div>
-      <div class="tab" onclick="reportTab('pdf',this)" style="color:var(--red);font-weight:700">📄 Exportar PDF</div>
-    </div>
-    <div id="report-content">${reportGeral(totalIn,totalOut,profit,topSales)}</div>`;
-  window._rd={totalIn,totalOut,profit,topSales};
-}
-function reportTab(tab,el){
-  document.querySelectorAll('#report-tabs .tab').forEach(t=>t.classList.remove('active'));
-  el.classList.add('active');
-  const d=window._rd;
-  const c=document.getElementById('report-content');
-  if(tab==='geral')c.innerHTML=reportGeral(d.totalIn,d.totalOut,d.profit,d.topSales);
-  if(tab==='produtos')c.innerHTML=reportProdutos();
-  if(tab==='pagamentos')c.innerHTML=reportPagamentos();
-  if(tab==='clientes')c.innerHTML=reportClientes();
-  if(tab==='vendedores')c.innerHTML=reportVendedores();
-  if(tab==='mei')c.innerHTML=reportMEI();
-  if(tab==='pdf')c.innerHTML=reportPDF();
-}
-function reportGeral(totalIn,totalOut,profit,topSales){
-  const totalFees=state.sales.filter(s=>s.status==='paid').reduce((a,s)=>a+s.feeValue,0);
-  return `
-    <div class="cards-grid">
-      <div class="card card-metric"><div class="card-label">Total Entradas</div><div class="card-value green">${R(totalIn)}</div></div>
-      <div class="card card-metric"><div class="card-label">Total Saídas</div><div class="card-value red">${R(totalOut)}</div></div>
-      <div class="card card-metric"><div class="card-label">Lucro Líquido</div><div class="card-value ${profit>=0?'green':'red'}">${R(profit)}</div></div>
-      <div class="card card-metric"><div class="card-label">Taxas pagas</div><div class="card-value amber">${R(totalFees)}</div></div>
-    </div>
-    <div class="card" style="margin-top:20px">
-      <div class="section-title" style="margin-bottom:14px">🏆 Maiores vendas por produto</div>
-      <table><thead><tr><th>#</th><th>Produto/Serviço</th><th>Total Vendido</th></tr></thead>
-      <tbody>${topSales.map(([name,val],i)=>`<tr><td><strong>#${i+1}</strong></td><td>${name}</td><td style="font-weight:700;color:var(--green-l)">${R(val)}</td></tr>`).join('')}</tbody>
-      </table>
-    </div>`;
-}
-function reportProdutos(){
-  const salesCount={};
-  state.sales.filter(s=>s.status==='paid').forEach(s=>s.items.forEach(i=>{salesCount[i.productId]=(salesCount[i.productId]||0)+i.qty;}));
-  return `
-    <div class="card">
-      <div class="section-title" style="margin-bottom:14px">📦 Análise de Produtos & Serviços</div>
-      <table>
-        <thead><tr><th>Nome</th><th>Tipo</th><th>Custo base</th><th>Preço base</th><th>Variações</th><th>Estoque</th><th>Qtd vendida</th></tr></thead>
-        <tbody>
-          ${state.products.map(p=>`<tr>
-            <td><strong>${p.name}</strong></td>
-            <td><span class="badge ${p.type==='service'?'badge-blue':'badge-green'}">${p.type==='service'?'Serviço':'Produto'}</span></td>
-            <td>${R(p.cost)}</td>
-            <td style="font-weight:700">${R(p.price)}</td>
-            <td>${p.variations && p.variations.length > 0 ? `<span class="badge badge-purple">${p.variations.length} variação(ões)</span>` : 'Nenhuma'}</td>
-            <td>${p.type==='product'?((p.stock??0)<=5?`<span class="stock-low">⚠️ ${p.stock??0}`:`<span class="stock-ok">${p.stock??0}`)+'</span>':'—'}</td>
-            <td style="font-weight:600">${salesCount[p.id]||0} un</td>
-          </tr>`).join('')}
-        </tbody>
-      </table>
-    </div>`;
-}
-function reportVendedores(){
-  const paid = state.sales.filter(s=>s.status==='paid');
-
-  // Ranking por vendedor
-  const porVendedor = {};
-  paid.forEach(s=>{
-    const key = s.employeeId || '__sem__';
-    if(!porVendedor[key]) porVendedor[key] = { name: s.employeeName || 'Sem vendedor informado', vendas:0, total:0, lucro:0 };
-    porVendedor[key].vendas++;
-    porVendedor[key].total += s.netTotal;
-    porVendedor[key].lucro += (s.profit - s.feeValue);
-  });
-  const rankingVendedores = Object.values(porVendedor).sort((a,b)=>b.total-a.total);
-
-  // Ranking geral de produtos (o que mais vendeu, considerando todas as vendas pagas)
-  const porProduto = {};
-  paid.forEach(s=>s.items.forEach(i=>{
-    if(!porProduto[i.name]) porProduto[i.name] = { qty:0, total:0 };
-    porProduto[i.name].qty += i.qty;
-    porProduto[i.name].total += i.subtotal;
-  }));
-  const rankingProdutos = Object.entries(porProduto).sort((a,b)=>b[1].qty-a[1].qty).slice(0,10);
-
-  return `
-    <div class="card" style="margin-bottom:20px">
-      <div class="section-title" style="margin-bottom:14px">🏆 Quem vendeu mais</div>
-      <table>
-        <thead><tr><th>Vendedor</th><th>Vendas</th><th>Total vendido</th><th>Lucro líquido</th><th>Ticket médio</th></tr></thead>
-        <tbody>
-          ${rankingVendedores.map((v,i)=>`<tr>
-            <td>${i===0&&v.name!=='Sem vendedor informado'?'🏆 ':''}<strong>${v.name}</strong></td>
-            <td>${v.vendas}</td>
-            <td style="font-weight:700;color:var(--green-l)">${R(v.total)}</td>
-            <td style="color:${v.lucro<0?'var(--red-l)':'var(--blue-l)'}">${R(v.lucro)}</td>
-            <td>${R(v.total/v.vendas)}</td>
-          </tr>`).join('') || '<tr><td colspan="5" style="text-align:center;color:var(--muted)">Nenhuma venda paga registrada</td></tr>'}
-        </tbody>
-      </table>
-    </div>
-    <div class="card">
-      <div class="section-title" style="margin-bottom:14px">📦 O que mais vendeu (geral)</div>
-      <table>
-        <thead><tr><th>Produto/Variação</th><th>Qtd. vendida</th><th>Total gerado</th></tr></thead>
-        <tbody>
-          ${rankingProdutos.map(([name,d],i)=>`<tr>
-            <td>${i===0?'🏆 ':''}<strong>${name}</strong></td>
-            <td>${d.qty}x</td>
-            <td style="font-weight:700;color:var(--green-l)">${R(d.total)}</td>
-          </tr>`).join('') || '<tr><td colspan="3" style="text-align:center;color:var(--muted)">Nenhuma venda paga registrada</td></tr>'}
-        </tbody>
-      </table>
-    </div>`;
-}
-function reportPagamentos(){
-  const paid=state.sales.filter(s=>s.status==='paid');
-  const byMethod={};
-  paid.forEach(s=>{
-    if(!byMethod[s.payMethod])byMethod[s.payMethod]={count:0,gross:0,fees:0,net:0};
-    byMethod[s.payMethod].count++;
-    byMethod[s.payMethod].gross+=s.total;
-    byMethod[s.payMethod].fees+=s.feeValue;
-    byMethod[s.payMethod].net+=s.netTotal;
-  });
-  const totalFees=paid.reduce((a,s)=>a+s.feeValue,0);
-  const grandNet=paid.reduce((a,s)=>a+s.netTotal,0);
-  return `
-    <div class="cards-grid" style="margin-bottom:20px">
-      <div class="card card-metric"><div class="card-label">Total de vendas pagas</div><div class="card-value blue">${paid.length}</div></div>
-      <div class="card card-metric"><div class="card-label">Total em taxas</div><div class="card-value amber">${R(totalFees)}</div></div>
-    </div>
-    <div class="card">
-      <div class="section-title" style="margin-bottom:14px">💳 Desempenho por forma de pagamento</div>
-      <table>
-        <thead><tr><th>Método</th><th>Qtd</th><th>Bruto</th><th>Taxas</th><th>Líquido</th><th>Participação</th></tr></thead>
-        <tbody>
-          ${Object.entries(byMethod).map(([m,d])=>{
-            const pct=grandNet>0?(d.net/grandNet*100).toFixed(1):0;
-            return `<tr>
-              <td>${payIcon(m)} <strong>${payLabel(m)}</strong></td>
-              <td style="text-align:center">${d.count}</td>
-              <td>${R(d.gross)}</td>
-              <td style="color:var(--amber)">${d.fees>0?'-'+R(d.fees):'—'}</td>
-              <td style="font-weight:700;color:var(--green-l)">${R(d.net)}</td>
-              <td><div style="display:flex;align-items:center;gap:6px">
-                <div style="height:8px;width:${Math.round(pct)}px;max-width:80px;background:var(--blue-l);border-radius:4px"></div>
-                ${pct}%</div></td>
-            </tr>`;
-          }).join('')}
-        </tbody>
-      </table>
-    </div>
-    <div class="card" style="margin-top:16px;background:var(--amber-x);border:1px solid var(--amber)">
-      <div style="font-weight:700;margin-bottom:8px">💡 Taxas configuradas</div>
-      <div style="display:flex;flex-wrap:wrap;gap:16px;font-size:13px">
-        ${Object.entries(PAY_METHODS).filter(([,v])=>v.hasFee).map(([k,v])=>`<span>${v.icon} ${v.label}: <strong>${state.payFees[k]!==undefined?state.payFees[k]:v.defaultFee}%</strong></span>`).join('')}
-      </div>
-      <div style="font-size:12px;color:var(--muted);margin-top:6px">Ajuste as taxas em Configurações → Taxas da maquininha</div>
-    </div>`;
-}
-function reportClientes(){
-  const byClient={};
-  state.sales.filter(s=>s.status==='paid' && s.clientId).forEach(s=>{
-    if(!byClient[s.clientId]) byClient[s.clientId]={id:s.clientId,name:s.clientName,total:0,visits:0,items:{}};
-    byClient[s.clientId].total  += s.netTotal;
-    byClient[s.clientId].visits += 1;
-    s.items.forEach(i=>{byClient[s.clientId].items[i.name]=(byClient[s.clientId].items[i.name]||0)+i.qty;});
-  });
-  const sorted=Object.values(byClient).sort((a,b)=>b.total-a.total);
-  if(!sorted.length) return `<div class="card" style="text-align:center;padding:40px;color:var(--muted)">Nenhuma venda com cliente identificado ainda.</div>`;
-  return `
-    <div class="cards-grid" style="margin-bottom:20px">
-      <div class="card card-metric"><div class="card-label">Clientes ativos</div><div class="card-value blue">${sorted.length}</div></div>
-      <div class="card card-metric"><div class="card-label">Melhor cliente</div><div class="card-value green" style="font-size:18px">${sorted[0].name}</div><div class="card-sub">${R(sorted[0].total)}</div></div>
-      <div class="card card-metric"><div class="card-label">Total em vendas</div><div class="card-value green">${R(sorted.reduce((a,c)=>a+c.total,0))}</div></div>
-    </div>
-    <div class="card">
-      <div class="section-title" style="margin-bottom:16px">🏆 Ranking de Clientes</div>
-      <table>
-        <thead><tr><th>#</th><th>Cliente</th><th>Visitas</th><th>Total gasto</th><th>Item favorito</th><th>Detalhes</th></tr></thead>
-        <tbody>
-          ${sorted.map((c,i)=>{
-            const topItem=Object.entries(c.items).sort((a,b)=>b[1]-a[1])[0];
-            const medal=i===0?'🥇':i===1?'🥈':i===2?'🥉':'#'+(i+1);
-            return `<tr>
-              <td><strong>${medal}</strong></td>
-              <td><span class="client-link" onclick="openClientReport('${c.id}')">${c.name}</span></td>
-              <td style="text-align:center">${c.visits}x</td>
-              <td style="font-weight:700;color:var(--green-l)">${R(c.total)}</td>
-              <td style="font-size:13px;color:var(--muted)">${topItem?topItem[0]+' ('+topItem[1]+'x)':'—'}</td>
-              <td><button class="btn btn-ghost btn-sm" onclick="openClientReport('${c.id}')">Ver histórico</button></td>
-            </tr>`;
-          }).join('')}
-        </tbody>
-      </table>
-    </div>`;
-}
-function openEmployeeReport(employeeId){
-  const e = state.employees.find(x=>x.id===employeeId);
-  if(!e) return;
-  const vendas = state.sales.filter(s=>s.status==='paid' && s.employeeId===employeeId);
-  const totalVendido = vendas.reduce((a,s)=>a+s.netTotal,0);
-  const ticketMedio = vendas.length ? totalVendido/vendas.length : 0;
-
-  const produtoFreq = {};
-  vendas.forEach(s=>s.items.forEach(i=>{
-    produtoFreq[i.name] = (produtoFreq[i.name]||0) + i.qty;
-  }));
-  const topProdutos = Object.entries(produtoFreq).sort((a,b)=>b[1]-a[1]).slice(0,10);
-
-  openModal(`
-    <div class="modal-title">🧑‍💼 ${e.name}${e.role?' — '+e.role:''}</div>
-    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px">
-      <div class="card card-metric" style="flex:1;min-width:110px;padding:14px"><div class="card-label">Total vendido</div><div class="card-value green" style="font-size:20px">${R(totalVendido)}</div></div>
-      <div class="card card-metric" style="flex:1;min-width:110px;padding:14px"><div class="card-label">Vendas</div><div class="card-value blue" style="font-size:20px">${vendas.length}x</div></div>
-      <div class="card card-metric" style="flex:1;min-width:110px;padding:14px"><div class="card-label">Ticket médio</div><div class="card-value amber" style="font-size:20px">${R(ticketMedio)}</div></div>
-    </div>
-    <div style="margin-bottom:16px">
-      <div style="font-weight:700;margin-bottom:10px">⭐ Produtos mais vendidos por ${e.name.split(' ')[0]}</div>
-      <div style="display:flex;flex-direction:column;gap:6px">
-        ${topProdutos.map(([name,qty],i)=>`<div style="background:${i===0?'var(--blue-x)':'var(--bg)'};border:1px solid var(--border);border-radius:8px;padding:8px 14px;font-size:13px;display:flex;justify-content:space-between">
-          <span>${i===0?'🏆 ':''}${name}</span><strong style="color:var(--blue-l)">${qty}x</strong>
-        </div>`).join('') || '<div style="color:var(--muted);font-size:13px">Nenhuma venda registrada ainda</div>'}
-      </div>
-    </div>
-    <div class="form-actions">
-      <button class="btn btn-ghost" onclick="_closeModal()">Fechar</button>
-    </div>`,true);
-}
-
-function openClientReport(clientId){
-  navigate('reports').then(()=>{
-    const tab=document.querySelector('#report-tabs .tab:nth-child(4)');
-    if(tab) reportTab('clientes',tab);
-    openClientDetailModal(clientId);
-  });
-}
-function openClientDetailModal(clientId){
-  const clientSales=state.sales.filter(s=>s.status==='paid'&&s.clientId===clientId);
-  if(!clientSales.length){toast('Nenhuma compra encontrada','error');return;}
-  const clientName=clientSales[0].clientName||'Cliente';
-  const totalGasto=clientSales.reduce((a,s)=>a+s.netTotal,0);
-  const totalVisits=clientSales.length;
-
-  // Agrupa por produto base e, dentro de cada produto, por variação
-  const productFreq={};
-  clientSales.forEach(s=>s.items.forEach(i=>{
-    const baseName = i.variationName ? i.name.replace(` — ${i.variationName}`,'') : i.name;
-    const key = i.productId || baseName;
-    if(!productFreq[key]) productFreq[key] = { name: baseName, qty:0, variations:{} };
-    productFreq[key].qty += i.qty;
-    if(i.variationName) productFreq[key].variations[i.variationName] = (productFreq[key].variations[i.variationName]||0) + i.qty;
-  }));
-  const topProducts = Object.values(productFreq).sort((a,b)=>b.qty-a.qty);
-
-  openModal(`
-    <div class="modal-title">👤 ${clientName}</div>
-    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px">
-      <div class="card card-metric" style="flex:1;min-width:110px;padding:14px"><div class="card-label">Total gasto</div><div class="card-value green" style="font-size:20px">${R(totalGasto)}</div></div>
-      <div class="card card-metric" style="flex:1;min-width:110px;padding:14px"><div class="card-label">Visitas</div><div class="card-value blue" style="font-size:20px">${totalVisits}x</div></div>
-      <div class="card card-metric" style="flex:1;min-width:110px;padding:14px"><div class="card-label">Ticket médio</div><div class="card-value amber" style="font-size:20px">${R(totalGasto/totalVisits)}</div></div>
-    </div>
-    <div style="margin-bottom:16px">
-      <div style="font-weight:700;margin-bottom:10px">⭐ Produtos e variações mais pedidos</div>
-      <div style="display:flex;flex-direction:column;gap:6px">
-        ${topProducts.map((p,i)=>{
-          const varEntries = Object.entries(p.variations).sort((a,b)=>b[1]-a[1]);
-          const topVar = varEntries[0];
-          return `<div style="background:${i===0?'var(--blue-x)':'var(--bg)'};border:1px solid var(--border);border-radius:8px;padding:8px 14px;font-size:13px">
-            <div>${i===0?'🏆 ':''}<strong>${p.name}</strong> <span style="color:var(--blue-l);font-weight:700">${p.qty}x</span></div>
-            ${topVar?`<div style="font-size:12px;color:var(--muted);margin-top:2px">Variação preferida: <strong style="color:var(--text)">${topVar[0]}</strong> (${topVar[1]}x)${varEntries.length>1?` · outras: ${varEntries.slice(1).map(([n,q])=>`${n} (${q}x)`).join(', ')}`:''}</div>`:''}
-          </div>`;
-        }).join('')}
-      </div>
-    </div>
-    <div>
-      <div style="font-weight:700;margin-bottom:10px">📋 Histórico de compras</div>
-      <div style="max-height:260px;overflow-y:auto">
-        <table style="min-width:unset">
-          <thead><tr><th>Data</th><th>Hora</th><th>Itens</th><th>Pagamento</th><th>Total</th></tr></thead>
-          <tbody>
-            ${[...clientSales].reverse().map(s=>`<tr>
-              <td style="white-space:nowrap">${fmt(s.date)}</td>
-              <td style="color:var(--muted)">${s.time||'—'}</td>
-              <td style="font-size:12px">${s.items.map(i=>i.qty+'x '+i.name).join(', ')}</td>
-              <td style="font-size:12px">${payIcon(s.payMethod)} ${payLabel(s.payMethod)}</td>
-              <td style="font-weight:700;color:var(--green-l);white-space:nowrap">${R(s.netTotal)}</td>
-            </tr>`).join('')}
-          </tbody>
-        </table>
-      </div>
-    </div>
-    <div class="form-actions" style="margin-top:16px">
-      <button class="btn btn-ghost" onclick="_closeModal()">Fechar</button>
-      <button class="btn btn-primary btn-sm" onclick="_closeModal();navigate('sales')">+ Nova Venda</button>
-    </div>`,true);
-}
-function reportMEI(){
-  const LIMIT = currentLimit();
-  const pct=(state.yearRevenue/LIMIT*100);
-  const meses=new Date().getMonth()+1;
-  const projectedAnnual=(state.yearRevenue/meses)*12;
-  return `
-    <div class="card" style="margin-bottom:16px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-        <span style="font-weight:700;font-size:15px">🏛️ Situação MEI ${new Date().getFullYear()}</span>
-        <button class="btn btn-ghost btn-sm" onclick="openEditRevenueModal()">✏️ Corrigir faturamento</button>
-      </div>
-      <div class="progress-track" style="height:20px"><div class="progress-fill ${pct>=90?'danger':pct>=75?'warning':''}" style="width:${Math.min(100,pct)}%"></div></div>
-      <div style="margin-top:8px;font-size:13px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:4px">
-        <span>Faturado: <strong>${R(state.yearRevenue)}</strong></span>
-        <span>${pct.toFixed(1)}% utilizado</span>
-        <span>Limite: <strong>${R(LIMIT)}</strong></span>
-      </div>
-    </div>
-    <div class="cards-grid">
-      <div class="card card-metric"><div class="card-label">Faturamento anual</div><div class="card-value blue">${R(state.yearRevenue)}</div></div>
-      <div class="card card-metric"><div class="card-label">Projeção anual</div><div class="card-value ${projectedAnnual>LIMIT?'red':'green'}">${R(projectedAnnual)}</div><div class="card-sub">${projectedAnnual>LIMIT?'⚠️ Pode ultrapassar!':'✅ Dentro do limite'}</div></div>
-      <div class="card card-metric"><div class="card-label">Restante</div><div class="card-value ${(LIMIT-state.yearRevenue)<10000?'red':'green'}">${R(LIMIT-state.yearRevenue)}</div></div>
-    </div>
-    <div class="card" style="margin-top:16px">
-      <div style="font-weight:700;margin-bottom:10px">📋 Histórico de ajustes do faturamento</div>
-      ${state.revenueHistory.length?state.revenueHistory.slice().reverse().map(h=>`
-        <div class="history-entry ${h.action==='init'?'create':'edit'}">
-          <div style="display:flex;justify-content:space-between;margin-bottom:3px"><strong>${h.action==='init'?'🟢 Registro inicial':'✏️ Correção'}</strong><span style="color:var(--muted);font-size:12px">${new Date(h.ts).toLocaleString('pt-BR')}</span></div>
-          ${h.before!==null?`<div>De: ${R(h.before)} → Para: <strong>${R(h.after)}</strong></div>`:`<div>Valor: <strong>${R(h.after)}</strong></div>`}
-          <div style="color:var(--muted);font-size:12px">${h.reason} — <em>${h.user}</em></div>
-        </div>`).join(''):'<span style="color:var(--muted);font-size:13px">Sem alterações registradas</span>'}
-    </div>
-    <div class="card" style="margin-top:16px;background:var(--blue-x);border:1px solid var(--blue-l)">
-      <div style="font-weight:700;margin-bottom:8px;color:var(--blue)">📌 Obrigações MEI mensais</div>
-      <div style="font-size:13px;display:grid;gap:6px">
-        <div>✅ DAS MEI: <strong>R$ 76,90/mês</strong> (pagar até dia 20)</div>
-        <div>✅ Declaração Anual (DASN-SIMEI): até <strong>31/05</strong> de cada ano</div>
-        <div>✅ Emitir nota fiscal para empresas (pessoa jurídica)</div>
-        <div>ℹ️ Contador não obrigatório, mas recomendado ao se aproximar do limite</div>
-      </div>
-    </div>`;
-}
-
-
-// ══════════════════════════════════════
-// RELATÓRIO PDF — FORMATAÇÃO ABNT
-// ══════════════════════════════════════
-function reportPDF(){
-  const now = new Date();
-  const mes = now.toLocaleDateString('pt-BR',{month:'long',year:'numeric'});
-  const mesNum = String(now.getMonth()+1).padStart(2,'0');
-  const ano = now.getFullYear();
-  const dataEmissao = now.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'});
-  const horaEmissao = now.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
-
-  const tipos = [
-    {id:'mensal',    label:'📊 Relatório Mensal Completo',      desc:'Receitas, despesas, lucro, vendas e fluxo de caixa do mês atual'},
-    {id:'vendas',    label:'🛒 Relatório de Vendas',            desc:'Detalhamento de todas as vendas com itens, clientes e formas de pagamento'},
-    {id:'estoque',   label:'📦 Relatório de Estoque',           desc:'Posição atual de estoque de todos os produtos'},
-    {id:'clientes',  label:'👥 Relatório de Clientes',          desc:'Cadastro e histórico de compras dos clientes'},
-    state.employees.length ? {id:'vendedores', label:'🧑‍💼 Relatório de Vendedores', desc:'Ranking de quem vendeu mais e os produtos mais vendidos'} : null,
-    {id:'mei',       label:'🏛️ Relatório de Enquadramento MEI', desc:'Situação do faturamento anual e projeção em relação ao limite'},
-    {id:'fluxo',     label:'💰 Relatório de Fluxo de Caixa',   desc:'Todos os lançamentos de entrada e saída'},
-  ].filter(Boolean);
-
-  return `
-    <div class="card" style="max-width:700px;margin:0 auto">
-      <div style="text-align:center;margin-bottom:24px">
-        <div style="font-size:32px;margin-bottom:8px">📄</div>
-        <div style="font-size:20px;font-weight:700;color:var(--text)">Exportar Relatório em PDF</div>
-        <div style="color:var(--muted);font-size:13px;margin-top:4px">Formatação ABNT NBR 14724 • ${dataEmissao} ${horaEmissao}</div>
-      </div>
-
-      <div style="margin-bottom:20px">
-        <label style="font-weight:600;margin-bottom:12px;display:block">Selecione o tipo de relatório:</label>
-        ${tipos.map(t=>`
-          <label style="display:flex;align-items:flex-start;gap:12px;padding:12px 16px;border:1.5px solid var(--border);border-radius:8px;margin-bottom:8px;cursor:pointer;transition:.15s"
-            onmouseover="this.style.borderColor='var(--blue-l)'" onmouseout="this.style.borderColor='var(--border)'">
-            <input type="radio" name="report-type" value="${t.id}" ${t.id==='mensal'?'checked':''} onchange="toggleClientReportSelector()" style="margin-top:3px;flex-shrink:0"/>
-            <div>
-              <div style="font-weight:600;font-size:14px">${t.label}</div>
-              <div style="font-size:12px;color:var(--muted);margin-top:2px">${t.desc}</div>
-            </div>
-          </label>`).join('')}
-      </div>
-
-      <div class="form-group" id="report-client-box" style="display:none;background:var(--blue-x);padding:14px 16px;border-radius:8px">
-        <label>👤 Cliente específico (opcional)</label>
-        <select id="report-client-filter">
-          <option value="">Todos os clientes (relatório geral de cadastro)</option>
-          ${state.clients.map(c=>`<option value="${c.id}">${c.name}</option>`).join('')}
-        </select>
-        <div style="font-size:12px;color:var(--muted);margin-top:6px">Selecionando um cliente, o relatório traz tudo que ele já comprou (dentro do período escolhido abaixo), o ticket médio e o dia da semana em que ele mais compra.</div>
-      </div>
-
-      <div class="form-group">
-        <label style="margin-bottom:10px">Período do relatório</label>
-        <div class="pay-methods" id="period-quick-pills">
-          <div class="pay-pill" id="pill-period-day" onclick="setReportPeriod('day')">📅 1 dia</div>
-          <div class="pay-pill" id="pill-period-week" onclick="setReportPeriod('week')">🗓️ 1 semana</div>
-          <div class="pay-pill active" id="pill-period-month" onclick="setReportPeriod('month')">📆 1 mês</div>
-          <div class="pay-pill" id="pill-period-year" onclick="setReportPeriod('year')">🏛️ 1 ano</div>
-          <div class="pay-pill" id="pill-period-total" onclick="setReportPeriod('total')">♾️ Total</div>
-          <div class="pay-pill" id="pill-period-single" onclick="setReportPeriod('single')">🗓️ Dia avulso</div>
-        </div>
-      </div>
-
-      <div class="form-row" id="period-range-fields">
-        <div class="form-group">
-          <label>Período — De</label>
-          <input type="date" id="pdf-from" value="${ano}-${mesNum}-01"/>
-        </div>
-        <div class="form-group">
-          <label>Período — Até</label>
-          <input type="date" id="pdf-to" value="${new Date(ano,now.getMonth()+1,0).toISOString().slice(0,10)}"/>
-        </div>
-      </div>
-      <div class="form-group" id="period-single-field" style="display:none">
-        <label>Escolha o dia</label>
-        <input type="date" id="pdf-single-day" value="${now.toISOString().slice(0,10)}"/>
-      </div>
-
-      <div class="form-group">
-        <label>Responsável / Emitente</label>
-        <input id="pdf-autor" value="${state.user?.name||''}" placeholder="Nome do responsável"/>
-      </div>
-      <div class="form-group">
-        <label>CNPJ MEI</label>
-        <input id="pdf-cnpj" value="${state.user?.cpf_cnpj||''}" placeholder="00.000.000/0001-00"/>
-      </div>
-      <div class="form-group">
-        <label>Observações (opcional)</label>
-        <textarea id="pdf-obs" rows="2" placeholder="Informações adicionais para constar no relatório..."></textarea>
-      </div>
-
-      <div style="display:flex;gap:12px;margin-top:8px">
-        <button class="btn btn-primary" style="flex:1;padding:14px" onclick="gerarPDF()">
-          🖨️ Gerar e Imprimir PDF
-        </button>
-      </div>
-      <div style="margin-top:12px;padding:12px;background:var(--blue-x);border-radius:8px;font-size:12px;color:var(--muted)">
-        💡 <strong>Como salvar como PDF:</strong> Quando a janela de impressão abrir, em "Destino" selecione <strong>"Salvar como PDF"</strong> e clique em Salvar.
-      </div>
-    </div>`;
-}
-
-function toggleClientReportSelector(){
-  const tipo = document.querySelector('input[name="report-type"]:checked')?.value;
-  const box = document.getElementById('report-client-box');
-  if(box) box.style.display = tipo==='clientes' ? 'block' : 'none';
-}
-
-function setReportPeriod(mode){
-  document.querySelectorAll('#period-quick-pills .pay-pill').forEach(p=>p.classList.remove('active'));
-  document.getElementById('pill-period-'+mode)?.classList.add('active');
-
-  const rangeFields  = document.getElementById('period-range-fields');
-  const singleField  = document.getElementById('period-single-field');
-  if(mode==='single'){
-    rangeFields.style.display='none';
-    singleField.style.display='block';
+// ── Inicialização do Banco de Dados (Auto-Migration) ───────────
+const initDB = async () => {
+  if (!process.env.DATABASE_URL) {
+    console.log("⚠️ DATABASE_URL não configurada. Pulei a criação das tabelas.");
     return;
   }
-  rangeFields.style.display='';
-  singleField.style.display='none';
-
-  const iso = d => d.toISOString().slice(0,10);
-  const now = new Date();
-  let from=now, to=now, useEmpty=false;
-  if(mode==='day'){
-    from = now; to = now;
-  } else if(mode==='week'){
-    from = new Date(now); from.setDate(from.getDate()-6); to = now;
-  } else if(mode==='month'){
-    from = new Date(now.getFullYear(), now.getMonth(), 1);
-    to   = new Date(now.getFullYear(), now.getMonth()+1, 0);
-  } else if(mode==='year'){
-    from = new Date(now.getFullYear(), 0, 1);
-    to   = new Date(now.getFullYear(), 11, 31);
-  } else if(mode==='total'){
-    useEmpty = true;
-  }
-  document.getElementById('pdf-from').value = useEmpty ? '' : iso(from);
-  document.getElementById('pdf-to').value   = useEmpty ? '' : iso(to);
-}
-
-function gerarPDF(){
-  const tipo = document.querySelector('input[name="report-type"]:checked')?.value || 'mensal';
-  const clienteFiltroId = tipo==='clientes' ? (document.getElementById('report-client-filter')?.value || '') : '';
-  const clienteFiltro = clienteFiltroId ? state.clients.find(c=>c.id===clienteFiltroId) : null;
-  const singleMode = document.getElementById('period-single-field')?.style.display !== 'none';
-  let from, to;
-  if(singleMode){
-    const dia = document.getElementById('pdf-single-day')?.value;
-    from = dia; to = dia;
-  } else {
-    from = document.getElementById('pdf-from')?.value;
-    to   = document.getElementById('pdf-to')?.value;
-  }
-  const autor= document.getElementById('pdf-autor')?.value || state.user?.name || '—';
-  const cnpj = document.getElementById('pdf-cnpj')?.value || state.user?.cpf_cnpj || '—';
-  const obs  = document.getElementById('pdf-obs')?.value || '';
-
-  const dataFrom = from ? new Date(from+'T00:00:00') : null;
-  const dataTo   = to   ? new Date(to+'T23:59:59')   : null;
-  const fmtPeriodo = (from && to)
-    ? (from===to
-        ? new Date(from+'T00:00:00').toLocaleDateString('pt-BR')
-        : `${new Date(from+'T00:00:00').toLocaleDateString('pt-BR')} a ${new Date(to+'T00:00:00').toLocaleDateString('pt-BR')}`)
-    : 'Período completo';
-
-  const now = new Date();
-  const dataEmissao = now.toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'});
-  const mesAtualNome = now.toLocaleDateString('pt-BR',{month:'long',year:'numeric'});
-
-  const vendasPeriodo = state.sales.filter(s=>{
-    if(!from&&!to)return true;
-    const d=new Date(s.date+'T00:00:00');
-    return(!dataFrom||d>=dataFrom)&&(!dataTo||d<=dataTo);
-  });
-  const vendasPagas = vendasPeriodo.filter(s=>s.status==='paid');
-
-  const cfPeriodo = state.cashflow.filter(c=>{
-    if(!from&&!to)return true;
-    const d=new Date(c.date+'T00:00:00');
-    return(!dataFrom||d>=dataFrom)&&(!dataTo||d<=dataTo);
-  });
-
-  const totalIn  = cfPeriodo.filter(c=>c.type==='in').reduce((a,c)=>a+c.value,0);
-  const totalOut = cfPeriodo.filter(c=>c.type==='out').reduce((a,c)=>a+c.value,0);
-  const lucro    = totalIn-totalOut;
-  const totalVendas = vendasPagas.reduce((a,s)=>a+s.netTotal,0);
-  const totalFees   = vendasPagas.reduce((a,s)=>a+s.feeValue,0);
-  const totalLucro  = vendasPagas.reduce((a,s)=>a+s.profit,0);
-  const pctMEI = (state.yearRevenue/MEI_LIMIT*100).toFixed(1);
-  const meses  = new Date().getMonth()+1;
-
-  const mesAtualKey = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
-  const paidSalesMes = state.sales.filter(s=>s.status==='paid'&&s.date&&s.date.startsWith(mesAtualKey));
-  const receitaMes   = paidSalesMes.reduce((a,s)=>a+s.netTotal,0);
-  const lucroMes     = paidSalesMes.reduce((a,s)=>a+s.profit,0);
-  const despesasMes  = state.cashflow.filter(c=>c.type==='out'&&c.date&&c.date.startsWith(mesAtualKey)).reduce((a,c)=>a+c.value,0);
-  const taxasMes     = paidSalesMes.reduce((a,s)=>a+s.feeValue,0);
-  const margemMes    = receitaMes>0 ? ((lucroMes-taxasMes)/receitaMes*100).toFixed(1) : '0.0';
-  const payBreakdownMes = {};
-  paidSalesMes.forEach(s=>{payBreakdownMes[s.payMethod]=(payBreakdownMes[s.payMethod]||0)+s.netTotal;});
-
-  const nomes = {
-    mensal: 'RELATÓRIO MENSAL DE GESTÃO FINANCEIRA',
-    vendas: 'RELATÓRIO DE VENDAS',
-    estoque:'RELATÓRIO DE POSIÇÃO DE ESTOQUE',
-    clientes: clienteFiltro ? `RELATÓRIO DE CLIENTE — ${clienteFiltro.name.toUpperCase()}` : 'RELATÓRIO CADASTRAL DE CLIENTES',
-    vendedores: 'RELATÓRIO DE DESEMPENHO DE VENDEDORES',
-    mei:    'RELATÓRIO DE ENQUADRAMENTO MEI',
-    fluxo:  'RELATÓRIO DE FLUXO DE CAIXA',
-  };
-
-  let seccoes = '';
-
-  if(tipo==='mensal'||tipo==='vendas'){
-    seccoes += `
-      <h2 class="${tipo==='mensal'?'abnt-first-section':'abnt-section'}">1 RESUMO FINANCEIRO DO PERÍODO</h2>
-      <table>
-        <tr><th>Indicador</th><th>Valor (R$)</th></tr>
-        <tr><td>Total de Receitas (Entradas)</td><td>${R(totalIn)}</td></tr>
-        <tr><td>Total de Despesas (Saídas)</td><td>${R(totalOut)}</td></tr>
-        <tr><td>Resultado Líquido</td><td>${R(lucro)}</td></tr>
-        <tr><td>Faturamento por Vendas</td><td>${R(totalVendas)}</td></tr>
-        <tr><td>Taxas de Maquininha/Gateway</td><td>${R(totalFees)}</td></tr>
-        <tr><td>Lucro Estimado das Vendas</td><td>${R(totalLucro)}</td></tr>
-        <tr><td>Total de Vendas no Período</td><td>${vendasPagas.length} transação(ões)</td></tr>
-      </table>`;
-  }
-
-  if(tipo==='mensal'||tipo==='vendas'){
-    seccoes += `
-      <h2 class="abnt-section">2 DETALHAMENTO DAS VENDAS</h2>
-      <table>
-        <tr><th>Data</th><th>Hora</th><th>Cliente</th><th>Itens</th><th>Pagamento</th><th>Total Líq. (R$)</th><th>Status</th></tr>
-        ${vendasPeriodo.map(s=>`
-          <tr>
-            <td>${fmt(s.date)}</td>
-            <td>${s.time||'—'}</td>
-            <td>${s.clientName||'Cliente avulso'}</td>
-            <td>${s.items.map(i=>`${i.qty}x ${i.name}`).join(', ')}</td>
-            <td>${payLabel(s.payMethod)}</td>
-            <td>${R(s.netTotal)}</td>
-            <td>${s.status==='paid'?'Pago':'Pendente'}</td>
-          </tr>`).join('')}
-      </table>`;
-  }
-
-  if(tipo==='mensal'||tipo==='fluxo'){
-    seccoes += `
-      <h2 class="abnt-section">${tipo==='fluxo'?'1':'3'} FLUXO DE CAIXA</h2>
-      <table>
-        <tr><th>Data</th><th>Descrição</th><th>Tipo</th><th>Valor (R$)</th></tr>
-        ${cfPeriodo.map(c=>`
-          <tr>
-            <td>${fmt(c.date)}</td>
-            <td>${c.desc}</td>
-            <td>${c.type==='in'?'Entrada':'Saída'}</td>
-            <td>${c.type==='in'?'+':'-'}${R(c.value)}</td>
-          </tr>`).join('')}
-        <tr><td colspan="3"><strong>SALDO DO PERÍODO</strong></td><td><strong>${R(lucro)}</strong></td></tr>
-      </table>`;
-  }
-
-  if(tipo==='estoque'||tipo==='mensal'){
-    const prods = state.products.filter(p=>p.type==='product');
-    seccoes += `
-      <h2 class="abnt-section">${tipo==='estoque'?'1':'4'} POSIÇÃO DE ESTOQUE</h2>
-      <table>
-        <tr><th>Produto</th><th>Unidade</th><th>Custo Unit. (R$)</th><th>Preço Venda (R$)</th><th>Qtd. em Estoque</th><th>Valor em Estoque (R$)</th></tr>
-        ${prods.map(p=>`
-          <tr>
-            <td>${p.name}</td>
-            <td>${p.unit||'un'}</td>
-            <td>${R(p.cost)}</td>
-            <td>${R(p.price)}</td>
-            <td${(p.stock??0)<=5?' style="color:red;font-weight:bold"':''}>${p.stock??0}</td>
-            <td>${R((p.stock??0)*p.cost)}</td>
-          </tr>`).join('')}
-        <tr><td colspan="5"><strong>TOTAL EM ESTOQUE</strong></td><td><strong>${R(prods.reduce((a,p)=>a+(p.stock??0)*p.cost,0))}</strong></td></tr>
-      </table>`;
-  }
-
-  if(tipo==='clientes'){
-    if(clienteFiltro){
-      const diasSemana=['Domingo','Segunda-feira','Terça-feira','Quarta-feira','Quinta-feira','Sexta-feira','Sábado'];
-      const comprasCliente = state.sales
-        .filter(s=>s.clientId===clienteFiltro.id && s.status==='paid')
-        .filter(s=>{
-          if(!from&&!to)return true;
-          const d=new Date(s.date+'T00:00:00');
-          return(!dataFrom||d>=dataFrom)&&(!dataTo||d<=dataTo);
-        })
-        .sort((a,b)=>String(a.date).localeCompare(String(b.date)));
-
-      const totalGastoCliente = comprasCliente.reduce((a,s)=>a+s.netTotal,0);
-      const ticketMedioCliente = comprasCliente.length ? totalGastoCliente/comprasCliente.length : 0;
-
-      const freqDias = {};
-      comprasCliente.forEach(s=>{
-        const dia = diasSemana[new Date(s.date+'T00:00:00').getDay()];
-        freqDias[dia]=(freqDias[dia]||0)+1;
-      });
-      let diaPreferido='—', maxFreq=0;
-      Object.entries(freqDias).forEach(([dia,qtd])=>{ if(qtd>maxFreq){maxFreq=qtd;diaPreferido=dia;} });
-
-      // Produto/variação mais pedidos pelo cliente (mesma lógica da tela de detalhe)
-      const produtosFreqPdf = {};
-      comprasCliente.forEach(s=>s.items.forEach(i=>{
-        const baseName = i.variationName ? i.name.replace(` — ${i.variationName}`,'') : i.name;
-        const key = i.productId || baseName;
-        if(!produtosFreqPdf[key]) produtosFreqPdf[key] = { name: baseName, qty:0, variations:{} };
-        produtosFreqPdf[key].qty += i.qty;
-        if(i.variationName) produtosFreqPdf[key].variations[i.variationName] = (produtosFreqPdf[key].variations[i.variationName]||0) + i.qty;
-      }));
-      const topProdutosPdf = Object.values(produtosFreqPdf).sort((a,b)=>b.qty-a.qty);
-
-      seccoes += `
-        <h2 class="abnt-first-section">1 DADOS DO CLIENTE</h2>
-        <table>
-          <tr><th>Campo</th><th>Valor</th></tr>
-          <tr><td>Nome</td><td>${clienteFiltro.name}</td></tr>
-          <tr><td>CPF</td><td>${clienteFiltro.cpf||'—'}</td></tr>
-          <tr><td>Telefone</td><td>${clienteFiltro.phone||'—'}</td></tr>
-          <tr><td>E-mail</td><td>${clienteFiltro.email||'—'}</td></tr>
-          <tr><td>Cidade</td><td>${clienteFiltro.city||'—'}</td></tr>
-        </table>
-        <h2 class="abnt-section">2 RESUMO DE COMPRAS (${fmtPeriodo})</h2>
-        <table>
-          <tr><th>Indicador</th><th>Valor</th></tr>
-          <tr><td>Total gasto no período</td><td>${R(totalGastoCliente)}</td></tr>
-          <tr><td>Quantidade de compras pagas</td><td>${comprasCliente.length}</td></tr>
-          <tr><td>Ticket médio</td><td>${R(ticketMedioCliente)}</td></tr>
-          <tr><td>Dia da semana em que mais compra</td><td>${diaPreferido}${maxFreq?` (${maxFreq}x)`:''}</td></tr>
-        </table>
-        <h2 class="abnt-section">3 PRODUTOS E VARIAÇÕES MAIS PEDIDOS</h2>
-        <table>
-          <tr><th>Produto</th><th>Qtd. Total</th><th>Variação Preferida</th><th>Outras Variações</th></tr>
-          ${topProdutosPdf.map(p=>{
-            const varEntries = Object.entries(p.variations).sort((a,b)=>b[1]-a[1]);
-            const topVar = varEntries[0];
-            return `<tr>
-              <td>${p.name}</td>
-              <td>${p.qty}x</td>
-              <td>${topVar?`${topVar[0]} (${topVar[1]}x)`:'—'}</td>
-              <td>${varEntries.length>1?varEntries.slice(1).map(([n,q])=>`${n} (${q}x)`).join(', '):'—'}</td>
-            </tr>`;
-          }).join('') || '<tr><td colspan="4">Nenhum item encontrado</td></tr>'}
-        </table>
-        <h2 class="abnt-section">4 HISTÓRICO DE COMPRAS</h2>
-        <table>
-          <tr><th>Data</th><th>Dia da Semana</th><th>Hora</th><th>Itens</th><th>Pagamento</th><th>Total Líq. (R$)</th></tr>
-          ${comprasCliente.map(s=>`
-            <tr>
-              <td>${fmt(s.date)}</td>
-              <td>${diasSemana[new Date(s.date+'T00:00:00').getDay()]}</td>
-              <td>${s.time||'—'}</td>
-              <td>${s.items.map(i=>`${i.qty}x ${i.name}`).join(', ')}</td>
-              <td>${payLabel(s.payMethod)}</td>
-              <td>${R(s.netTotal)}</td>
-            </tr>`).join('') || '<tr><td colspan="6">Nenhuma compra paga encontrada no período selecionado</td></tr>'}
-        </table>`;
-    } else {
-      seccoes += `
-        <h2 class="abnt-first-section">1 CADASTRO DE CLIENTES</h2>
-        <table>
-          <tr><th>Nome</th><th>CPF</th><th>Telefone</th><th>E-mail</th><th>Cidade</th><th>Total Compras (R$)</th></tr>
-          ${state.clients.map(c=>{
-            const totalC=state.sales.filter(s=>s.clientId===c.id&&s.status==='paid').reduce((a,s)=>a+s.netTotal,0);
-            return`<tr>
-              <td>${c.name}</td><td>${c.cpf||'—'}</td><td>${c.phone||'—'}</td>
-              <td>${c.email||'—'}</td><td>${c.city||'—'}</td><td>${R(totalC)}</td>
-            </tr>`;
-          }).join('')}
-        </table>`;
-    }
-  }
-
-  if(tipo==='vendedores'){
-    const vendasPagasPeriodo = vendasPeriodo.filter(s=>s.status==='paid');
-    const porVendedorPdf = {};
-    vendasPagasPeriodo.forEach(s=>{
-      const key = s.employeeId || '__sem__';
-      if(!porVendedorPdf[key]) porVendedorPdf[key] = { name: s.employeeName || 'Sem vendedor informado', vendas:0, total:0, lucro:0 };
-      porVendedorPdf[key].vendas++;
-      porVendedorPdf[key].total += s.netTotal;
-      porVendedorPdf[key].lucro += (s.profit - s.feeValue);
-    });
-    const rankingVendedoresPdf = Object.values(porVendedorPdf).sort((a,b)=>b.total-a.total);
-
-    const porProdutoPdf = {};
-    vendasPagasPeriodo.forEach(s=>s.items.forEach(i=>{
-      if(!porProdutoPdf[i.name]) porProdutoPdf[i.name] = { qty:0, total:0 };
-      porProdutoPdf[i.name].qty += i.qty;
-      porProdutoPdf[i.name].total += i.subtotal;
-    }));
-    const rankingProdutosPdf = Object.entries(porProdutoPdf).sort((a,b)=>b[1].qty-a[1].qty).slice(0,15);
-
-    seccoes += `
-      <h2 class="abnt-first-section">1 RANKING DE VENDEDORES (${fmtPeriodo})</h2>
-      <table>
-        <tr><th>Vendedor</th><th>Qtd. Vendas</th><th>Total Vendido (R$)</th><th>Lucro Líquido (R$)</th><th>Ticket Médio (R$)</th></tr>
-        ${rankingVendedoresPdf.map(v=>`
-          <tr>
-            <td>${v.name}</td>
-            <td>${v.vendas}</td>
-            <td>${R(v.total)}</td>
-            <td>${R(v.lucro)}</td>
-            <td>${R(v.total/v.vendas)}</td>
-          </tr>`).join('') || '<tr><td colspan="5">Nenhuma venda paga no período</td></tr>'}
-      </table>
-      <h2 class="abnt-section">2 PRODUTOS MAIS VENDIDOS (${fmtPeriodo})</h2>
-      <table>
-        <tr><th>Produto/Variação</th><th>Qtd. Vendida</th><th>Total Gerado (R$)</th></tr>
-        ${rankingProdutosPdf.map(([name,d])=>`
-          <tr>
-            <td>${name}</td>
-            <td>${d.qty}</td>
-            <td>${R(d.total)}</td>
-          </tr>`).join('') || '<tr><td colspan="3">Nenhuma venda paga no período</td></tr>'}
-      </table>`;
-  }
-
-  if(tipo==='mei'){
-    const proj = (state.yearRevenue/meses)*12;
-    seccoes += `
-      <h2 class="abnt-first-section">1 SITUAÇÃO DO ENQUADRAMENTO MEI</h2>
-      <table>
-        <tr><th>Indicador</th><th>Valor</th></tr>
-        <tr><td>Faturamento Acumulado no Ano</td><td>${R(state.yearRevenue)}</td></tr>
-        <tr><td>Limite Anual MEI</td><td>${R(LIMIT)}</td></tr>
-        <tr><td>Percentual Utilizado</td><td>${pctMEI}%</td></tr>
-        <tr><td>Saldo Disponível</td><td>${R(LIMIT-state.yearRevenue)}</td></tr>
-        <tr><td>Projeção Anual (com base nos meses decorridos)</td><td>${R(proj)}</td></tr>
-        <tr><td>Situação</td><td>${proj>LIMIT?'⚠️ RISCO DE DESENQUADRAMENTO':'✅ DENTRO DO LIMITE'}</td></tr>
-      </table>
-      <h2 class="abnt-section">2 FATURAMENTO POR MÊS</h2>
-      <table>
-        <tr><th>Mês/Ano</th><th>Faturamento (R$)</th><th>Qtd. Vendas</th></tr>
-        ${Array.from({length:meses},(_,i)=>{
-          const d=new Date(new Date().getFullYear(),i,1);
-          const mk=`${d.getFullYear()}-${String(i+1).padStart(2,'0')}`;
-          const vms=state.sales.filter(s=>s.status==='paid'&&s.date&&s.date.startsWith(mk));
-          const fat=vms.reduce((a,s)=>a+s.netTotal,0);
-          return`<tr><td>${d.toLocaleDateString('pt-BR',{month:'long',year:'numeric'})}</td><td>${R(fat)}</td><td>${vms.length}</td></tr>`;
-        }).join('')}
-      </table>`;
-  }
-
-  const html = `
-    <div class="abnt-cover">
-      <p><strong>${autor}</strong></p>
-      <p>${cnpj}</p>
-      <br/><br/><br/><br/>
-      <p><strong style="font-size:14pt">${nomes[tipo]||'RELATÓRIO FINANCEIRO'}</strong></p>
-      <p><strong>Período: ${fmtPeriodo}</strong></p>
-      <br/><br/><br/><br/><br/><br/><br/><br/><br/>
-      <p>Campo Grande – MS</p>
-      <p>${dataEmissao}</p>
-    </div>
-    <div class="abnt-section">
-      <h2>SUMÁRIO</h2>
-      <p>Painel Geral — Situação Atual</p>
-      <p>1. Resumo Financeiro do Período</p>
-      <p>2. Detalhamento das Vendas</p>
-      <p>3. Fluxo de Caixa</p>
-      <p>4. Posição de Estoque</p>
-      ${obs?`<h3>OBSERVAÇÕES</h3><p>${obs}</p>`:''}
-      <h2 style="margin-top:24pt">PAINEL GERAL — SITUAÇÃO ATUAL (${mesAtualNome.toUpperCase()})</h2>
-      <p>Indicadores extraídos diretamente da Dashboard do sistema, referentes ao mês corrente.</p>
-      <table>
-        <tr><th>Indicador</th><th>Valor</th></tr>
-        <tr><td>Receita líquida (mês)</td><td>${R(receitaMes)}</td></tr>
-        <tr><td>Lucro líquido, após taxas (mês)</td><td>${R(lucroMes-taxasMes)} (margem de ${margemMes}%)</td></tr>
-        <tr><td>Despesas (mês)</td><td>${R(despesasMes)}</td></tr>
-        <tr><td>Taxas de maquininha/gateway (mês)</td><td>${R(taxasMes)}</td></tr>
-        <tr><td>Vendas pagas no mês</td><td>${paidSalesMes.length}</td></tr>
-        <tr><td>Faturamento acumulado no ano (MEI)</td><td>${R(state.yearRevenue)}</td></tr>
-        <tr><td>Limite anual MEI</td><td>${R(MEI_LIMIT)}</td></tr>
-        <tr><td>Percentual do limite utilizado</td><td>${pctMEI}%</td></tr>
-      </table>
-      <h3>Vendas por forma de pagamento (mês)</h3>
-      <table>
-        <tr><th>Forma de Pagamento</th><th>Valor (R$)</th></tr>
-        ${Object.entries(payBreakdownMes).map(([m,v])=>`<tr><td>${payLabel(m)}</td><td>${R(v)}</td></tr>`).join('')||'<tr><td colspan="2">Sem vendas registradas neste mês</td></tr>'}
-      </table>
-    </div>
-    ${seccoes}
-    <div class="abnt-section">
-      <hr/>
-      <p style="font-size:10pt;text-align:center">Relatório gerado pelo sistema MEI Fácil em ${dataEmissao} às ${now.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}.</p>
-      <p style="font-size:10pt;text-align:center">Documento gerado eletronicamente — não requer assinatura.</p>
-    </div>`;
-
-  const printEl = document.getElementById('abnt-print');
-  printEl.innerHTML = html;
-  setTimeout(()=>{ window.print(); },200);
-}
-
-// ══════════════════════════════════════
-// IMPORTAR ESTOQUE POR TEXTO
-// ══════════════════════════════════════
-function openImportStockModal(){
-  openModal(`
-    <div class="modal-title">📋 Importar Estoque por Texto</div>
-    <p style="font-size:13px;color:var(--muted);margin-bottom:12px">
-      Cole um texto descrevendo os produtos e quantidades. O sistema vai interpretar e montar uma prévia para você revisar antes de salvar.<br/>
-      <strong>Exemplos aceitos:</strong><br/>
-      <span style="font-family:monospace;font-size:12px;color:var(--blue-l)">
-        capinha ip 13 pro max - 14un<br/>
-        capinha a22 2un R$25<br/>
-        pastel de carne: 30 unidades, custo R$3, preço R$8<br/>
-        refrigerante 12un
-      </span>
-    </p>
-    <div class="form-group">
-      <label>Texto com produtos e quantidades</label>
-      <textarea id="import-text" rows="8" placeholder="Cole aqui o texto com os produtos e quantidades..." style="font-family:monospace;font-size:13px;resize:vertical"></textarea>
-    </div>
-    <div class="form-actions">
-      <button class="btn btn-ghost" onclick="_closeModal()">Cancelar</button>
-      <button class="btn btn-primary" id="btn-parse-stock" onclick="parseStockText()">🔍 Interpretar Texto</button>
-    </div>
-  `, true);
-}
-
-async function parseStockText(){
-  const text = document.getElementById('import-text')?.value?.trim();
-  if(!text) return toast('Cole um texto antes de interpretar','error');
-
-  const btn = document.getElementById('btn-parse-stock');
-  btn.disabled = true;
-  btn.textContent = '⏳ Interpretando...';
-
-  const existingProducts = state.products.map(p => ({
-    id: p.id,
-    name: p.name,
-    type: p.type,
-    variations: (p.variations||[]).map(v=>v.name)
-  }));
-
+  const client = await db.connect();
   try {
-    const data = await apiCall('/api/ai/interpret-stock', 'POST', { text, existingProducts });
+    console.log("⏳ Verificando e criando tabelas no banco de dados...");
+    await client.query(`
+      CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
-    if(!data || !Array.isArray(data.items) || data.items.length === 0){
-      toast('Não consegui interpretar o texto. Tente ser mais específico.','error');
-      btn.disabled = false; btn.textContent = '🔍 Interpretar Texto';
-      return;
-    }
+      CREATE TABLE IF NOT EXISTS users (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        name VARCHAR(255) NOT NULL,
+        email VARCHAR(255) UNIQUE NOT NULL,
+        password_hash VARCHAR(255) NOT NULL,
+        cpf_cnpj VARCHAR(50),
+        razao_social VARCHAR(255),
+        store_name VARCHAR(150),
+        business_type VARCHAR(30) DEFAULT 'MEI',
+        updated_at TIMESTAMP DEFAULT NOW(),
+        created_at TIMESTAMP DEFAULT NOW()
+      );
 
-    if(data.method === 'ai') toast('Texto interpretado pela IA (formato não padrão) 🤖','success');
-    else toast(`${data.items.length} item(ns) interpretado(s) instantaneamente ⚡`,'success');
+      CREATE TABLE IF NOT EXISTS clients (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+        name VARCHAR(255) NOT NULL,
+        cpf VARCHAR(50),
+        phone VARCHAR(50),
+        email VARCHAR(255),
+        city VARCHAR(255),
+        notes TEXT,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
 
-    renderStockPreview(data.items);
+      CREATE TABLE IF NOT EXISTS products (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+        name VARCHAR(255) NOT NULL,
+        type VARCHAR(50) DEFAULT 'service',
+        unit VARCHAR(20) DEFAULT 'un',
+        cost DECIMAL(10,2) DEFAULT 0,
+        margin_pct DECIMAL(10,2) DEFAULT 100,
+        price DECIMAL(10,2) NOT NULL,
+        stock INT,
+        variations JSONB DEFAULT '[]'::jsonb,
+        active BOOLEAN DEFAULT true,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
 
-  } catch(e) {
-    console.error(e);
-    toast('Erro ao interpretar o texto','error');
-    btn.disabled = false; btn.textContent = '🔍 Interpretar Texto';
+      CREATE TABLE IF NOT EXISTS employees (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+        name VARCHAR(255) NOT NULL,
+        role VARCHAR(255),
+        salary DECIMAL(10,2) DEFAULT 0,
+        payment_day INT DEFAULT 5,
+        phone VARCHAR(50),
+        notes TEXT,
+        active BOOLEAN DEFAULT true,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS sales (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+        client_id UUID REFERENCES clients(id) ON DELETE SET NULL,
+        client_name VARCHAR(255),
+        employee_id UUID REFERENCES employees(id) ON DELETE SET NULL,
+        employee_name VARCHAR(255),
+        total DECIMAL(10,2) DEFAULT 0,
+        profit DECIMAL(10,2) DEFAULT 0,
+        status VARCHAR(50) DEFAULT 'pending',
+        pay_method VARCHAR(50) DEFAULT 'dinheiro',
+        fee_pct DECIMAL(10,2) DEFAULT 0,
+        fee_value DECIMAL(10,2) DEFAULT 0,
+        net_total DECIMAL(10,2) DEFAULT 0,
+        notes TEXT,
+        sale_date DATE,
+        sale_time VARCHAR(5),
+        paid_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS sale_items (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        sale_id UUID REFERENCES sales(id) ON DELETE CASCADE,
+        user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+        product_id UUID REFERENCES products(id) ON DELETE SET NULL,
+        product_name VARCHAR(255),
+        variation_name VARCHAR(255),
+        qty INT NOT NULL,
+        unit_price DECIMAL(10,2) NOT NULL,
+        cost DECIMAL(10,2) DEFAULT 0,
+        subtotal DECIMAL(10,2) NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS cashflow_entries (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+        sale_id UUID REFERENCES sales(id) ON DELETE CASCADE,
+        description VARCHAR(255) NOT NULL,
+        type VARCHAR(10) NOT NULL,
+        value DECIMAL(10,2) NOT NULL,
+        category VARCHAR(100),
+        entry_date DATE,
+        edit_history JSONB,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS revenue_audit (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+        before_val DECIMAL(10,2),
+        after_val DECIMAL(10,2) NOT NULL,
+        reason TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+    // Migrações seguras para bancos já existentes
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS store_name VARCHAR(150);`);
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS business_type VARCHAR(30) DEFAULT 'MEI';`);
+    await client.query(`ALTER TABLE sales ADD COLUMN IF NOT EXISTS sale_time VARCHAR(5);`);
+    await client.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS variations JSONB DEFAULT '[]'::jsonb;`);
+    await client.query(`ALTER TABLE sale_items ADD COLUMN IF NOT EXISTS variation_name VARCHAR(255);`);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS employees (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+        name VARCHAR(255) NOT NULL,
+        role VARCHAR(255),
+        salary DECIMAL(10,2) DEFAULT 0,
+        payment_day INT DEFAULT 5,
+        phone VARCHAR(50),
+        notes TEXT,
+        active BOOLEAN DEFAULT true,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+    await client.query(`ALTER TABLE sales ADD COLUMN IF NOT EXISTS employee_id UUID REFERENCES employees(id) ON DELETE SET NULL;`);
+    await client.query(`ALTER TABLE sales ADD COLUMN IF NOT EXISTS employee_name VARCHAR(255);`);
+    console.log("✅ Banco de dados inicializado e pronto para uso!");
+  } catch (err) {
+    console.error("❌ Erro ao criar as tabelas:", err);
+  } finally {
+    client.release();
   }
-}
+};
+initDB();
 
-function renderStockPreview(items){
-  // Salva os items no estado temporário para uso no saveImportedStock
-  window._importItems = items;
+// ── Middleware ─────────────────────────────────────────────────
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrcAttr: ["'unsafe-inline'"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      fontSrc: ["'self'", "https://fonts.gstatic.com"],
+      imgSrc: ["'self'", "data:"],
+      connectSrc: ["'self'"],
+    },
+  },
+}));
+app.use(cors({ origin: process.env.FRONTEND_URL || '*' }));
+app.use(express.json({ limit: '10kb' }));
+app.use('/api/auth', rateLimit({ windowMs: 15*60*1000, max: 20, message: { error:'Muitas tentativas. Aguarde.' }}));
+app.use('/api',      rateLimit({ windowMs: 15*60*1000, max: 300 }));
+app.use(express.static(path.join(__dirname)));
 
-  const rows = items.map((item, i) => {
-    const matched = item.matchedProductId
-      ? `<span style="font-size:11px;color:var(--green-l)">✅ ${item.matchedProductName}</span>`
-      : `<span style="font-size:11px;color:var(--amber)">⚠️ Produto novo</span>`;
+// ── Auth Middleware ─────────────────────────────────────────────
+const auth = (req, res, next) => {
+  const token = req.headers.authorization?.replace('Bearer ', '');
+  if (!token) return res.status(401).json({ error: 'Token não fornecido' });
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'dev-secret-change-me');
+    req.userId = decoded.id;
+    req.userBusinessType = decoded.business_type || 'MEI';
+    next();
+  } catch { res.status(401).json({ error: 'Token inválido' }); }
+};
 
-    return `<tr>
-      <td>
-        <input id="imp-name-${i}" value="${item.name}${item.variationName?' — '+item.variationName:''}" style="width:100%;min-width:140px"/>
-        <div style="margin-top:3px">${matched}</div>
-      </td>
-      <td><input type="number" id="imp-qty-${i}" value="${item.qty||0}" min="0" style="width:70px;text-align:center"/></td>
-      <td><input type="number" id="imp-cost-${i}" value="${item.cost??''}" min="0" step="0.01" placeholder="—" style="width:80px;text-align:right"/></td>
-      <td><input type="number" id="imp-price-${i}" value="${item.price??''}" min="0" step="0.01" placeholder="—" style="width:80px;text-align:right"/></td>
-      <td>
-        <button class="remove-item-btn" onclick="window._importItems.splice(${i},1);renderStockPreview(window._importItems)">×</button>
-      </td>
-    </tr>`;
-  }).join('');
+const signToken = (id, business_type='MEI') => jwt.sign(
+  { id, business_type },
+  process.env.JWT_SECRET || 'dev-secret-change-me',
+  { expiresIn: '7d' }
+);
 
-  document.getElementById('modal-content').innerHTML = `
-    <div class="modal-title">✅ Prévia do Estoque — Revise antes de salvar</div>
-    <p style="font-size:12px;color:var(--muted);margin-bottom:12px">
-      Confira os valores e corrija se necessário. Campos em branco serão deixados sem valor.
-      Itens com ⚠️ serão criados como novos produtos (tipo "Produto").
-    </p>
-    <div style="overflow-x:auto">
-      <table style="width:100%;border-collapse:collapse">
-        <thead>
-          <tr style="font-size:11px;color:var(--muted)">
-            <th style="text-align:left;padding:6px 8px">PRODUTO / VARIAÇÃO</th>
-            <th style="padding:6px 8px">QTD</th>
-            <th style="padding:6px 8px">CUSTO R$</th>
-            <th style="padding:6px 8px">PREÇO R$</th>
-            <th style="padding:6px 8px"></th>
-          </tr>
-        </thead>
-        <tbody id="import-preview-rows">${rows}</tbody>
-      </table>
-    </div>
-    <div class="form-actions" style="margin-top:16px">
-      <button class="btn btn-ghost" onclick="openImportStockModal()">← Voltar</button>
-      <button class="btn btn-success" onclick="saveImportedStock()">💾 Confirmar e Salvar Estoque</button>
-    </div>`;
-}
+// ── Helper ──────────────────────────────────────────────────────
+const Q = (text, params) => db.query(text, params);
 
-async function saveImportedStock(){
-  const items = window._importItems || [];
-  if(!items.length) return;
+// ══════════════════════════════════════════════════════════════
+// AUTH ROUTES
+// ══════════════════════════════════════════════════════════════
 
-  const btn = document.querySelector('#modal-content .btn-success');
-  if(btn){ btn.disabled = true; btn.textContent = '⏳ Salvando...'; }
+app.post('/api/auth/register', async (req, res) => {
+  try {
+    const { name, email, password, cpf_cnpj, business_type } = req.body;
+    if (!name || !email || !password) return res.status(400).json({ error: 'Campos obrigatórios: name, email, password' });
+    if (password.length < 8) return res.status(400).json({ error: 'Senha deve ter no mínimo 8 caracteres' });
 
-  let saved = 0, errors = 0;
+    const exists = await Q('SELECT id FROM users WHERE email=$1', [email.toLowerCase()]);
+    if (exists.rows.length) return res.status(409).json({ error: 'E-mail já cadastrado' });
 
-  for(let i = 0; i < items.length; i++){
-    const item = items[i];
-    const name  = document.getElementById(`imp-name-${i}`)?.value?.trim() || item.name;
-    const qty   = parseInt(document.getElementById(`imp-qty-${i}`)?.value) || 0;
-    const cost  = parseFloat(document.getElementById(`imp-cost-${i}`)?.value) || null;
-    const price = parseFloat(document.getElementById(`imp-price-${i}`)?.value) || null;
+    const hash = await bcrypt.hash(password, 12);
+    const { rows } = await Q(
+      `INSERT INTO users(name,email,password_hash,cpf_cnpj,business_type) VALUES($1,$2,$3,$4,$5) RETURNING id,name,email,cpf_cnpj,razao_social,business_type,store_name`,
+      [name, email.toLowerCase(), hash, cpf_cnpj || null, business_type || 'MEI']
+    );
+    res.status(201).json({ token: signToken(rows[0].id, rows[0].business_type||'MEI'), user: rows[0] });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Erro ao criar conta' }); }
+});
 
-    try {
-      if(item.matchedProductId){
-        // Produto existente — atualiza estoque
-        const prod = state.products.find(p=>p.id===item.matchedProductId);
-        if(prod && item.variationName && prod.variations?.length > 0){
-          // Atualiza estoque da variação específica
-          const newVars = prod.variations.map(v =>
-            v.name === item.variationName ? {...v, stock: qty} : v
-          );
-          await apiCall(`/api/products/${prod.id}`,'PUT',{
-            name:prod.name, type:prod.type, unit:prod.unit,
-            cost:cost??prod.cost, margin_pct:prod.marginPct, price:price??prod.price,
-            stock:prod.stock, variations:newVars
-          });
-        } else if(prod){
-          // Produto sem variação — usa rota de ajuste de estoque
-          await apiCall(`/api/products/${prod.id}/stock`,'PATCH',{mode:'set',value:qty});
-          // Atualiza custo/preço se informados
-          if(cost!==null || price!==null){
-            await apiCall(`/api/products/${prod.id}`,'PUT',{
-              name:prod.name, type:prod.type, unit:prod.unit,
-              cost:cost??prod.cost, margin_pct:prod.marginPct, price:price??prod.price,
-              stock:qty, variations:prod.variations||[]
-            });
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    if (!email || !password) return res.status(400).json({ error: 'E-mail e senha são obrigatórios' });
+    const { rows } = await Q('SELECT * FROM users WHERE email=$1', [email?.toLowerCase()]);
+    if (!rows.length || !await bcrypt.compare(password, rows[0].password_hash))
+      return res.status(401).json({ error: 'E-mail ou senha incorretos' });
+    const { password_hash, ...user } = rows[0];
+    res.json({ token: signToken(user.id, user.business_type||'MEI'), user });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Erro no login' }); }
+});
+
+app.get('/api/auth/me', auth, async (req, res) => {
+  try {
+    const { rows } = await Q('SELECT id, name, email, cpf_cnpj, razao_social, store_name, business_type FROM users WHERE id=$1', [req.userId]);
+    if (!rows.length) return res.status(404).json({ error: 'Usuário não encontrado' });
+    res.json({ user: rows[0] });
+  } catch (e) { res.status(500).json({ error: 'Erro ao buscar usuário' }); }
+});
+
+app.patch('/api/auth/password', auth, async (req, res) => {
+  try {
+    const { current_password, new_password } = req.body;
+    if (!current_password || !new_password) return res.status(400).json({ error: 'Informe a senha atual e a nova senha' });
+    if (new_password.length < 8) return res.status(400).json({ error: 'A nova senha deve ter no mínimo 8 caracteres' });
+
+    const { rows } = await Q('SELECT password_hash FROM users WHERE id=$1', [req.userId]);
+    if (!rows.length) return res.status(404).json({ error: 'Usuário não encontrado' });
+
+    const ok = await bcrypt.compare(current_password, rows[0].password_hash);
+    if (!ok) return res.status(401).json({ error: 'Senha atual incorreta' });
+
+    const newHash = await bcrypt.hash(new_password, 12);
+    await Q('UPDATE users SET password_hash=$1, updated_at=NOW() WHERE id=$2', [newHash, req.userId]);
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: 'Erro ao alterar senha' }); }
+});
+
+app.put('/api/auth/profile', auth, async (req, res) => {
+  try {
+    const { name, cpf_cnpj, razao_social, store_name, business_type } = req.body;
+    if (!name || !name.trim()) return res.status(400).json({ error: 'Nome é obrigatório' });
+    const { rows } = await Q(
+      `UPDATE users SET name=$1, cpf_cnpj=$2, razao_social=$3, store_name=$4, business_type=$5, updated_at=NOW() WHERE id=$6 RETURNING id, name, email, cpf_cnpj, razao_social, store_name, business_type`,
+      [name.trim(), cpf_cnpj || null, razao_social || null, store_name || null, business_type || 'MEI', req.userId]
+    );
+    // Retorna novo token com business_type atualizado para o frontend renovar
+    const newToken = signToken(req.userId, rows[0].business_type || 'MEI');
+    res.json({ user: rows[0], token: newToken });
+  } catch (e) { res.status(500).json({ error: 'Erro ao atualizar perfil' }); }
+});
+
+// ══════════════════════════════════════════════════════════════
+// CLIENTS, PRODUCTS, SALES, CASHFLOW
+// ══════════════════════════════════════════════════════════════
+app.get('/api/clients', auth, async (req, res) => {
+  const { rows } = await Q('SELECT * FROM clients WHERE user_id=$1 ORDER BY name', [req.userId]);
+  res.json(rows);
+});
+app.post('/api/clients', auth, async (req, res) => {
+  const { name, cpf, phone, email, city, notes } = req.body;
+  const { rows } = await Q('INSERT INTO clients(user_id,name,cpf,phone,email,city,notes) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *', [req.userId, name, cpf, phone, email, city, notes]);
+  res.status(201).json(rows[0]);
+});
+app.put('/api/clients/:id', auth, async (req, res) => {
+  const { name, cpf, phone, email, city, notes } = req.body;
+  const { rows } = await Q('UPDATE clients SET name=$1,cpf=$2,phone=$3,email=$4,city=$5,notes=$6 WHERE id=$7 AND user_id=$8 RETURNING *', [name, cpf, phone, email, city, notes, req.params.id, req.userId]);
+  rows.length ? res.json(rows[0]) : res.status(404).json({ error: 'Não encontrado' });
+});
+app.delete('/api/clients/:id', auth, async (req, res) => {
+  await Q('DELETE FROM clients WHERE id=$1 AND user_id=$2', [req.params.id, req.userId]);
+  res.status(204).end();
+});
+
+app.get('/api/employees', auth, async (req, res) => {
+  const { rows } = await Q('SELECT * FROM employees WHERE user_id=$1 AND active=true ORDER BY name', [req.userId]);
+  res.json(rows);
+});
+app.post('/api/employees', auth, async (req, res) => {
+  const { name, role, salary, payment_day, phone, notes } = req.body;
+  if (!name || !name.trim()) return res.status(400).json({ error: 'Nome é obrigatório' });
+  const { rows } = await Q(
+    'INSERT INTO employees(user_id,name,role,salary,payment_day,phone,notes) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *',
+    [req.userId, name.trim(), role || null, salary || 0, payment_day || 5, phone || null, notes || null]
+  );
+  res.status(201).json(rows[0]);
+});
+app.put('/api/employees/:id', auth, async (req, res) => {
+  const { name, role, salary, payment_day, phone, notes } = req.body;
+  if (!name || !name.trim()) return res.status(400).json({ error: 'Nome é obrigatório' });
+  const { rows } = await Q(
+    'UPDATE employees SET name=$1,role=$2,salary=$3,payment_day=$4,phone=$5,notes=$6 WHERE id=$7 AND user_id=$8 RETURNING *',
+    [name.trim(), role || null, salary || 0, payment_day || 5, phone || null, notes || null, req.params.id, req.userId]
+  );
+  rows.length ? res.json(rows[0]) : res.status(404).json({ error: 'Não encontrado' });
+});
+app.delete('/api/employees/:id', auth, async (req, res) => {
+  // Soft delete — preserva o histórico de vendas já vinculado ao funcionário
+  await Q('UPDATE employees SET active=false WHERE id=$1 AND user_id=$2', [req.params.id, req.userId]);
+  res.status(204).end();
+});
+
+app.get('/api/products', auth, async (req, res) => {
+  const { rows } = await Q('SELECT * FROM products WHERE user_id=$1 AND active=true ORDER BY name', [req.userId]);
+  res.json(rows);
+});
+app.post('/api/products', auth, async (req, res) => {
+  const { name, type='service', unit='un', cost=0, margin_pct=100, price, stock, variations=[] } = req.body;
+  const stockVal = type === 'product' ? (stock ?? 0) : null;
+  const { rows } = await Q('INSERT INTO products(user_id,name,type,unit,cost,margin_pct,price,stock,variations) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *', [req.userId, name, type, unit, cost, margin_pct, price, stockVal, JSON.stringify(variations)]);
+  res.status(201).json(rows[0]);
+});
+app.put('/api/products/:id', auth, async (req, res) => {
+  const { name, type, unit, cost, margin_pct, price, stock, variations=[] } = req.body;
+  const stockVal = type === 'product' ? (stock ?? 0) : null;
+  const { rows } = await Q('UPDATE products SET name=$1,type=$2,unit=$3,cost=$4,margin_pct=$5,price=$6,stock=$7,variations=$8 WHERE id=$9 AND user_id=$10 RETURNING *', [name, type, unit, cost, margin_pct, price, stockVal, JSON.stringify(variations), req.params.id, req.userId]);
+  rows.length ? res.json(rows[0]) : res.status(404).json({ error: 'Não encontrado' });
+});
+app.delete('/api/products/:id', auth, async (req, res) => {
+  await Q('UPDATE products SET active=false WHERE id=$1 AND user_id=$2', [req.params.id, req.userId]);
+  res.status(204).end();
+});
+app.patch('/api/products/:id/stock', auth, async (req, res) => {
+  const { mode, value } = req.body;
+  const num = parseInt(value);
+  let sql = mode === 'set' ? 'UPDATE products SET stock=$1 WHERE id=$2 AND user_id=$3 RETURNING *' : mode === 'in' ? 'UPDATE products SET stock=COALESCE(stock,0)+$1 WHERE id=$2 AND user_id=$3 RETURNING *' : 'UPDATE products SET stock=GREATEST(0,COALESCE(stock,0)-$1) WHERE id=$2 AND user_id=$3 RETURNING *';
+  const { rows } = await Q(sql, [num, req.params.id, req.userId]);
+  rows.length ? res.json(rows[0]) : res.status(404).json({ error: 'Não encontrado' });
+});
+
+app.get('/api/sales', auth, async (req, res) => {
+  const { rows: sales } = await Q('SELECT * FROM sales WHERE user_id=$1 ORDER BY sale_date DESC, created_at DESC', [req.userId]);
+  if (!sales.length) return res.json([]);
+  const ids = sales.map(s => s.id);
+  const { rows: items } = await Q(`SELECT * FROM sale_items WHERE sale_id = ANY($1::uuid[]) ORDER BY id`, [ids]);
+  const itemsBySale = {};
+  items.forEach(i => { (itemsBySale[i.sale_id] ||= []).push(i); });
+  res.json(sales.map(s => ({ ...s, items: itemsBySale[s.id] || [] })));
+});
+app.get('/api/sales/:id', auth, async (req, res) => {
+  const { rows } = await Q('SELECT * FROM sales WHERE id=$1 AND user_id=$2', [req.params.id, req.userId]);
+  if (!rows.length) return res.status(404).json({ error: 'Venda não encontrada' });
+  const { rows: items } = await Q('SELECT * FROM sale_items WHERE sale_id=$1 ORDER BY id', [req.params.id]);
+  res.json({ ...rows[0], items });
+});
+app.post('/api/sales', auth, async (req, res) => {
+  const { client_id, client_name, employee_id, employee_name, items, pay_method = 'dinheiro', fee_pct = 0, status = 'pending', notes, sale_date, sale_time } = req.body;
+  const total = items.reduce((a, i) => a + i.qty * i.unit_price, 0);
+  const profit = items.reduce((a, i) => a + (i.qty * i.unit_price - i.qty * (i.cost || 0)), 0);
+  const feeValue = +(total * (fee_pct || 0) / 100).toFixed(2);
+  const netTotal = +(total - feeValue).toFixed(2);
+  const date = sale_date || new Date().toISOString().slice(0, 10);
+  const time = (typeof sale_time === 'string' && /^\d{2}:\d{2}$/.test(sale_time)) ? sale_time : new Date().toTimeString().slice(0, 5);
+  const client = await db.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows: saleRows } = await client.query(
+      `INSERT INTO sales(user_id,client_id,client_name,employee_id,employee_name,total,profit,status,pay_method,fee_pct,fee_value,net_total,notes,sale_date,sale_time,paid_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
+      [req.userId, client_id || null, client_name || null, employee_id || null, employee_name || null, total, profit, status, pay_method, fee_pct, feeValue, netTotal, notes || null, date, time, status === 'paid' ? new Date() : null]
+    );
+    const sale = saleRows[0];
+    for (const it of items) {
+      await client.query(
+        `INSERT INTO sale_items(sale_id,user_id,product_id,product_name,variation_name,qty,unit_price,cost,subtotal) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+        [sale.id, req.userId, it.product_id || null, it.product_name || null, it.variation_name || null, it.qty, it.unit_price, it.cost || 0, +(it.qty * it.unit_price).toFixed(2)]
+      );
+      if (it.product_id) {
+        const { rows: pRows } = await client.query(`SELECT stock, variations, type FROM products WHERE id=$1 AND user_id=$2`, [it.product_id, req.userId]);
+        if (pRows.length && pRows[0].type === 'product') {
+          if (it.variation_name) {
+            // Produto com variações: desconta do estoque da variação específica dentro do JSONB
+            let vars = pRows[0].variations || [];
+            const vIdx = vars.findIndex(v => v.name === it.variation_name);
+            if (vIdx >= 0 && vars[vIdx].stock !== null && vars[vIdx].stock !== undefined) {
+              vars[vIdx] = { ...vars[vIdx], stock: Math.max(0, (+vars[vIdx].stock || 0) - it.qty) };
+              await client.query(`UPDATE products SET variations=$1 WHERE id=$2 AND user_id=$3`, [JSON.stringify(vars), it.product_id, req.userId]);
+            }
+          } else if (pRows[0].stock !== null) {
+            // Produto simples, sem variações: desconta do estoque geral
+            await client.query(`UPDATE products SET stock = GREATEST(0, COALESCE(stock,0) - $1) WHERE id=$2 AND user_id=$3`, [it.qty, it.product_id, req.userId]);
           }
         }
-      } else {
-        // Produto novo — cria
-        const [prodName, varName] = name.includes('—') ? name.split('—').map(s=>s.trim()) : [name, null];
-        await apiCall('/api/products','POST',{
-          name: prodName,
-          type: 'product',
-          unit: 'un',
-          cost: cost || 0,
-          margin_pct: price && cost ? Math.round((price-cost)/cost*100) : 100,
-          price: price || 0,
-          stock: varName ? null : qty,
-          variations: varName ? [{name:varName, cost:cost||0, price:price||0, stock:qty}] : []
-        });
       }
-      saved++;
-    } catch(e) {
-      console.error('Erro ao salvar item', item, e);
-      errors++;
     }
+    if (status === 'paid') await client.query(`INSERT INTO cashflow_entries(user_id,description,type,value,entry_date,sale_id) VALUES($1,$2,'in',$3,$4,$5)`, [req.userId, `Venda — ${items.map(i => `${i.qty}x ${i.product_name}`).join(', ')}`, netTotal, date, sale.id]);
+    await client.query('COMMIT');
+    res.status(201).json(sale);
+  } catch (e) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: 'Erro ao registrar venda' });
+  } finally { client.release(); }
+});
+app.patch('/api/sales/:id/status', auth, async (req, res) => {
+  const { status } = req.body;
+  const { rows } = await Q(`UPDATE sales SET status=$1, paid_at=$2 WHERE id=$3 AND user_id=$4 RETURNING *`, [status, status === 'paid' ? new Date() : null, req.params.id, req.userId]);
+  if (!rows.length) return res.status(404).json({ error: 'Venda não encontrada' });
+  if (status === 'paid') {
+    const { rows: items } = await Q('SELECT * FROM sale_items WHERE sale_id=$1', [rows[0].id]);
+    await Q(`INSERT INTO cashflow_entries(user_id,description,type,value,entry_date,sale_id) VALUES($1,$2,'in',$3,CURRENT_DATE,$4)`, [req.userId, `Venda — ${items.map(i => `${i.qty}x ${i.product_name}`).join(', ')}`, rows[0].net_total, rows[0].id]);
   }
-
-  _closeModal();
-  await loadProducts();
-  renderProducts(document.getElementById('content'));
-
-  if(errors === 0){
-    toast(`✅ ${saved} item(s) de estoque salvos com sucesso!`,'success');
-  } else {
-    toast(`${saved} salvos, ${errors} com erro. Verifique o console.`,'error');
-  }
-  window._importItems = [];
-}
-
-// ══════════════════════════════════════
-// SETTINGS
-// ══════════════════════════════════════
-function renderSettings(el){
-  el.innerHTML=`
-    <div style="max-width:620px">
-      <div class="card" style="margin-bottom:16px">
-        <div class="section-title" style="margin-bottom:16px">👤 Minha Conta</div>
-        <div class="form-group"><label>Nome completo</label><input value="${state.user?.name||''}" id="set-name"/></div>
-        <div class="form-group"><label>E-mail</label><input type="email" value="${state.user?.email||''}" id="set-email" disabled style="background:var(--bg);color:var(--muted)"/></div>
-        <div class="form-row">
-          <div class="form-group"><label>CNPJ / CPF</label><input value="${state.user?.cpf_cnpj||''}" placeholder="00.000.000/0001-00" id="set-cnpj"/></div>
-          <div class="form-group"><label>Razão Social</label><input value="${state.user?.razao_social||''}" placeholder="João da Silva 00000000001" id="set-razao"/></div>
-        </div>
-        <div class="form-group">
-          <label>Tipo de empresa / enquadramento</label>
-          <select id="set-business-type" onchange="onSettingsBusinessTypeChange()">
-            ${Object.entries(BUSINESS_TYPES).map(([k,v])=>`<option value="${k}" ${(state.user?.business_type||'MEI')===k?'selected':''}>${v.label}</option>`).join('')}
-          </select>
-          <div id="settings-business-desc" style="font-size:12px;color:var(--green-l);margin-top:4px;padding:6px 10px;background:var(--green-x);border-radius:6px">
-            ${BUSINESS_TYPES[state.user?.business_type||'MEI']?.desc || ''}
-          </div>
-        </div>
-        <button class="btn btn-primary" onclick="saveProfile()">💾 Salvar</button>
-      </div>
-      <div class="card" style="margin-bottom:16px">
-        <div class="section-title" style="margin-bottom:4px">🏧 Taxas da Maquininha / Gateway</div>
-        <p style="font-size:13px;color:var(--muted);margin-bottom:16px">Configure as taxas cobradas pela sua maquininha. Serão pré-preenchidas nas vendas automaticamente.</p>
-        ${Object.entries(PAY_METHODS).filter(([,v])=>v.hasFee).map(([k,v])=>`
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-            <label style="margin:0;font-size:14px;font-weight:600">${v.icon} ${v.label}</label>
-            <div style="display:flex;align-items:center;gap:8px">
-              <input type="number" id="fee-${k}" min="0" max="20" step="0.01" value="${state.payFees[k]!==undefined?state.payFees[k].toFixed(2):v.defaultFee.toFixed(2)}" style="width:80px"/>
-              <span style="color:var(--muted)">%</span>
-            </div>
-          </div>`).join('')}
-        <button class="btn btn-primary" style="margin-top:4px" onclick="saveFeesConfig()">💾 Salvar taxas</button>
-      </div>
-      <div class="card" style="margin-bottom:16px">
-        <div class="section-title" style="margin-bottom:16px">🔐 Segurança</div>
-        <div class="form-group"><label>Senha atual</label><input type="password" id="pw-current" placeholder="••••••••"/></div>
-        <div class="form-group"><label>Nova senha</label><input type="password" id="pw-new" placeholder="Mínimo 8 caracteres"/></div>
-        <div class="form-group"><label>Confirmar nova senha</label><input type="password" id="pw-confirm" placeholder="••••••••"/></div>
-        <button class="btn btn-ghost" id="pw-submit-btn" onclick="changePassword()">🔑 Alterar Senha</button>
-      </div>
-      <div class="card" style="background:var(--red-x);border:1px solid var(--red-l)">
-        <div class="section-title" style="margin-bottom:8px;color:var(--red)">⚠️ Sair da conta</div>
-        <p style="font-size:13px;color:var(--muted);margin-bottom:12px">Você será desconectado do sistema.</p>
-        <button class="btn btn-danger btn-sm" onclick="logout()">Sair</button>
-      </div>
-    </div>`;
-}
-function saveFeesConfig(){
-  Object.keys(PAY_METHODS).filter(k=>PAY_METHODS[k].hasFee).forEach(k=>{
-    const input=document.getElementById(`fee-${k}`);
-    if(input)state.payFees[k]=parseFloat(input.value)||0;
-  });
-  toast('Taxas salvas! Aplicadas nas próximas vendas ✅','success');
-}
-function saveProfile(){
-  const name=document.getElementById('set-name').value.trim();
-  const cpf_cnpj=document.getElementById('set-cnpj').value.trim();
-  const razao_social=document.getElementById('set-razao').value.trim();
-  const business_type=document.getElementById('set-business-type')?.value||'MEI';
-  if(!name)return toast('Nome é obrigatório','error');
-  saveProfileAsync({name,cpf_cnpj,razao_social,business_type});
-}
-async function saveProfileAsync(payload){
-  const data = await apiCall('/api/auth/profile','PUT',payload);
-  if(!data)return;
-  state.user={...state.user,...data.user};
-  state.businessType = data.user.business_type || 'MEI';
-  // Salva o novo token (que já contém o business_type atualizado)
-  if(data.token) localStorage.setItem('mei_jwt', data.token);
-  document.getElementById('user-badge').textContent=(data.user.name||'U')[0].toUpperCase();
-  toast('Dados da conta salvos! ✅','success');
-  // Re-renderiza o dashboard imediatamente com o novo tipo
-  if(state.page === 'dashboard'){
-    renderDashboard(document.getElementById('content'));
-  }
-  const limitTitle = document.querySelector('.limit-title');
-  if(limitTitle){
-    limitTitle.textContent = `🏛️ ${getBusinessLabel(state.businessType)} — ${new Date().getFullYear()}`;
-  }
-}
-function changePassword(){
-  const current=document.getElementById('pw-current').value;
-  const newPass=document.getElementById('pw-new').value;
-  const confirm=document.getElementById('pw-confirm').value;
-  if(!current||!newPass||!confirm)return toast('Preencha os três campos de senha','error');
-  if(newPass.length<8)return toast('A nova senha deve ter no mínimo 8 caracteres','error');
-  if(newPass!==confirm)return toast('A confirmação não corresponde à nova senha','error');
-  changePasswordAsync(current,newPass);
-}
-async function changePasswordAsync(current_password,new_password){
-  const btn=document.getElementById('pw-submit-btn');
-  const label=btn.textContent;
-  btn.disabled=true;btn.textContent='⏳ Aguarde...';
-  const data = await apiCall('/api/auth/password','PATCH',{current_password,new_password});
-  btn.disabled=false;btn.textContent=label;
-  if(!data)return;
-  document.getElementById('pw-current').value='';
-  document.getElementById('pw-new').value='';
-  document.getElementById('pw-confirm').value='';
-  toast('Senha alterada com sucesso!','success');
-}
-
-// ══════════════════════════════════════
-// ADMIN — DADOS DE DEMONSTRAÇÃO (só aparece/funciona para a conta demo)
-// ══════════════════════════════════════
-// ══════════════════════════════════════
-// NOTAS & LEMBRETES
-// ══════════════════════════════════════
-function renderNotes(el){
-  // Carrega notas salvas do localStorage
-  const saved = JSON.parse(localStorage.getItem('mei_notes') || '[]');
-  el.innerHTML = `
-    <div style="max-width:800px">
-      <div class="section-header" style="margin-bottom:16px">
-        <span class="section-title">📝 Notas & Lembretes</span>
-        <button class="btn btn-primary btn-sm" onclick="addNote()">+ Nova Nota</button>
-      </div>
-      <div id="notes-list">
-        ${renderNotesList(saved)}
-      </div>
-    </div>`;
-}
-
-function renderNotesList(notes){
-  if(!notes.length) return `
-    <div class="card" style="text-align:center;padding:48px 24px;color:var(--muted)">
-      <div style="font-size:40px;margin-bottom:12px">📝</div>
-      <div style="font-size:16px;font-weight:600;margin-bottom:6px">Nenhuma nota ainda</div>
-      <div style="font-size:13px">Clique em "+ Nova Nota" para criar sua primeira anotação.</div>
-    </div>`;
-  return notes.map((note,i) => `
-    <div class="card" style="margin-bottom:12px;border-left:4px solid ${note.color||'var(--blue-l)'}">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
-        <div style="flex:1;min-width:0">
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-            <strong style="font-size:15px">${escHtml(note.title||'Sem título')}</strong>
-            <span style="font-size:11px;color:var(--muted)">${new Date(note.ts).toLocaleString('pt-BR')}</span>
-            ${note.pinned?'<span style="font-size:11px;background:var(--amber-x);color:var(--amber);padding:2px 8px;border-radius:99px">📌 Fixada</span>':''}
-          </div>
-          <div style="font-size:13px;color:var(--text);white-space:pre-wrap;word-break:break-word;line-height:1.6">${escHtml(note.content||'')}</div>
-        </div>
-        <div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0">
-          <button class="btn btn-ghost btn-sm" onclick="editNote(${i})" title="Editar">✏️</button>
-          <button class="btn btn-ghost btn-sm" onclick="togglePin(${i})" title="${note.pinned?'Desafixar':'Fixar'}">📌</button>
-          <button class="btn btn-sm" style="background:var(--red-x);color:var(--red)" onclick="deleteNote(${i})" title="Excluir">🗑️</button>
-        </div>
-      </div>
-    </div>`).join('');
-}
-
-function escHtml(str){
-  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-}
-
-function getNotes(){ return JSON.parse(localStorage.getItem('mei_notes')||'[]'); }
-function saveNotes(notes){ localStorage.setItem('mei_notes', JSON.stringify(notes)); }
-
-const NOTE_COLORS = [
-  {val:'var(--blue-l)',  label:'🔵 Azul'},
-  {val:'var(--green-l)', label:'🟢 Verde'},
-  {val:'var(--amber)',   label:'🟡 Amarelo'},
-  {val:'var(--red-l)',   label:'🔴 Vermelho'},
-  {val:'var(--purple)',  label:'🟣 Roxo'},
-];
-
-function openNoteModal(note={}, idx=null){
-  openModal(`
-    <div class="modal-title">${idx!==null?'✏️ Editar Nota':'📝 Nova Nota'}</div>
-    <div class="form-group">
-      <label>Título</label>
-      <input id="note-title" value="${escHtml(note.title||'')}" placeholder="Ex: Lembrete, Ideia, Tarefa..."/>
-    </div>
-    <div class="form-group">
-      <label>Conteúdo — cole textos, links, instruções, o que quiser</label>
-      <textarea id="note-content" rows="8" placeholder="Cole aqui qualquer texto, link, observação..." style="font-family:monospace;font-size:13px;resize:vertical">${escHtml(note.content||'')}</textarea>
-    </div>
-    <div class="form-group">
-      <label>Cor da nota</label>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-        ${NOTE_COLORS.map(c=>`
-          <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px">
-            <input type="radio" name="note-color" value="${c.val}" ${(note.color||'var(--blue-l)')===c.val?'checked':''}/>
-            ${c.label}
-          </label>`).join('')}
-      </div>
-    </div>
-    <div class="form-actions">
-      <button class="btn btn-ghost" onclick="_closeModal()">Cancelar</button>
-      <button class="btn btn-primary" onclick="saveNote(${idx!==null?idx:'null'})">💾 Salvar</button>
-    </div>`, true);
-}
-
-function addNote(){ openNoteModal(); }
-
-function editNote(i){
-  const notes = getNotes();
-  openNoteModal(notes[i], i);
-}
-
-function saveNote(idx){
-  const title   = document.getElementById('note-title').value.trim();
-  const content = document.getElementById('note-content').value;
-  const color   = document.querySelector('input[name="note-color"]:checked')?.value || 'var(--blue-l)';
-  if(!title && !content) return toast('Adicione um título ou conteúdo','error');
-  const notes = getNotes();
-  const note = { title, content, color, ts: new Date().toISOString(), pinned: false };
-  if(idx !== null && idx !== 'null' && idx !== undefined){
-    note.pinned = notes[idx]?.pinned || false;
-    note.ts = notes[idx]?.ts || note.ts;
-    notes[idx] = note;
-  } else {
-    notes.unshift(note);
-  }
-  saveNotes(notes);
-  _closeModal();
-  toast('Nota salva!','success');
-  // Re-renderiza a lista
-  const listEl = document.getElementById('notes-list');
-  if(listEl) listEl.innerHTML = renderNotesList(getNotes());
-}
-
-function togglePin(i){
-  const notes = getNotes();
-  notes[i].pinned = !notes[i].pinned;
-  // Fixadas vão para o topo
-  notes.sort((a,b) => (b.pinned?1:0)-(a.pinned?1:0));
-  saveNotes(notes);
-  const listEl = document.getElementById('notes-list');
-  if(listEl) listEl.innerHTML = renderNotesList(getNotes());
-}
-
-function deleteNote(i){
-  if(!confirm('Excluir esta nota?')) return;
-  const notes = getNotes();
-  notes.splice(i,1);
-  saveNotes(notes);
-  const listEl = document.getElementById('notes-list');
-  if(listEl) listEl.innerHTML = renderNotesList(getNotes());
-  toast('Nota excluída');
-}
-
-function renderAdminSeed(el){
-  const isDemo = (state.user?.email||'').toLowerCase() === 'demo@meifacil.com.br';
-  if(!isDemo){
-    el.innerHTML = `<div class="card" style="padding:40px;text-align:center;color:var(--muted)">🔒 Esta área é exclusiva da conta demo.</div>`;
-    return;
-  }
-  el.innerHTML = `
-    <div class="card" style="max-width:560px;padding:24px">
-      <h3 style="margin-bottom:6px">🛠️ Dados de demonstração</h3>
-      <p style="font-size:13px;color:var(--muted);margin-bottom:20px">Gera clientes, vendas e lançamentos de caixa fictícios (nomes, CPFs e telefones inventados) só nesta conta demo, para deixar a apresentação com dados de exemplo realistas. Lembre-se de avisar que são dados de demonstração.</p>
-
-      <div class="form-row-3">
-        <div class="form-group"><label>Clientes</label><input type="number" id="seed-clients" value="12" min="1" max="30"/></div>
-        <div class="form-group"><label>Dias de histórico</label><input type="number" id="seed-days" value="45" min="1" max="180"/></div>
-        <div class="form-group"><label>Vendas / dia (~)</label><input type="number" id="seed-per-day" value="3" min="1" max="10"/></div>
-      </div>
-
-      <button class="btn btn-primary" style="width:100%;padding:12px;margin-top:8px" onclick="adminSeedGenerate()">🌱 Gerar dados de demonstração</button>
-      <button class="btn btn-ghost" style="width:100%;padding:12px;margin-top:10px;border:1.5px solid var(--red-l);color:var(--red-l)" onclick="adminSeedReset()">🧹 Limpar todos os dados desta conta</button>
-
-      <div id="seed-result" style="margin-top:16px;font-size:13px;color:var(--muted)"></div>
-    </div>`;
-}
-async function adminSeedGenerate(){
-  const clients   = document.getElementById('seed-clients').value;
-  const days      = document.getElementById('seed-days').value;
-  const salesPerDay = document.getElementById('seed-per-day').value;
-  const box = document.getElementById('seed-result');
-  box.textContent = '⏳ Gerando dados, isso pode levar alguns segundos...';
-  const data = await apiCall('/api/admin/seed-demo','POST',{clients:+clients,days:+days,salesPerDay:+salesPerDay});
-  if(!data){ box.textContent=''; return; }
-  box.innerHTML = `✅ ${data.clients_created} clientes e ${data.sales_created} vendas criados.`;
-  toast('Dados de demonstração gerados!','success');
-}
-async function adminSeedReset(){
-  if(!confirm('Isso vai apagar TODOS os clientes, vendas e lançamentos desta conta demo. Confirmar?'))return;
-  const box = document.getElementById('seed-result');
-  const data = await apiCall('/api/admin/reset-demo','POST',{});
-  if(!data)return;
-  box.textContent = '✅ Dados da conta demo limpos.';
-  toast('Conta demo resetada!','success');
-}
-
-// ══════════════════════════════════════
-// INIT
-// ══════════════════════════════════════
-function applyTheme(dark){
-  document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
-  const btn = document.getElementById('theme-btn');
-  if(btn) btn.textContent = dark ? '🌙' : '☀️';
-}
-function toggleDarkMode(){
-  const isDark = document.documentElement.getAttribute('data-theme') !== 'dark';
-  localStorage.setItem('mei_theme', isDark ? 'dark' : 'light');
-  applyTheme(isDark);
-  toast(isDark ? '🌙 Modo escuro ativado' : '☀️ Modo claro ativado', 'success');
-}
-// Corrige o ícone ao carregar (o tema já foi aplicado no <head>)
-document.addEventListener('DOMContentLoaded', () => {
-  const btn = document.getElementById('theme-btn');
-  if(btn) btn.textContent = localStorage.getItem('mei_theme') === 'dark' ? '🌙' : '☀️';
+  res.json(rows[0]);
+});
+app.delete('/api/sales/:id', auth, async (req, res) => {
+  const client = await db.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('DELETE FROM cashflow_entries WHERE sale_id=$1 AND user_id=$2', [req.params.id, req.userId]);
+    await client.query('DELETE FROM sale_items WHERE sale_id=$1 AND user_id=$2', [req.params.id, req.userId]);
+    await client.query('DELETE FROM sales WHERE id=$1 AND user_id=$2', [req.params.id, req.userId]);
+    await client.query('COMMIT');
+    res.status(204).end();
+  } catch (e) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: 'Erro ao remover' });
+  } finally { client.release(); }
 });
 
-updateTopbarDate();
-setInterval(updateTopbarDate,60000);
-</script>
-</body>
-</html>
+app.get('/api/cashflow', auth, async (req, res) => {
+  const { rows } = await Q('SELECT * FROM cashflow_entries WHERE user_id=$1 ORDER BY entry_date DESC, created_at DESC LIMIT 200', [req.userId]);
+  res.json(rows);
+});
+app.post('/api/cashflow', auth, async (req, res) => {
+  const { description, type, value, category, entry_date } = req.body;
+  const { rows } = await Q('INSERT INTO cashflow_entries(user_id,description,type,value,category,entry_date) VALUES($1,$2,$3,$4,$5,$6) RETURNING *', [req.userId, description, type, value, category, entry_date||new Date()]);
+  res.status(201).json(rows[0]);
+});
+app.delete('/api/cashflow/:id', auth, async (req, res) => {
+  await Q('DELETE FROM cashflow_entries WHERE id=$1 AND user_id=$2', [req.params.id, req.userId]);
+  res.status(204).end();
+});
+app.patch('/api/cashflow/:id', auth, async (req, res) => {
+  const { value, description, reason, user_name } = req.body;
+  const { rows: existing } = await Q('SELECT * FROM cashflow_entries WHERE id=$1 AND user_id=$2', [req.params.id, req.userId]);
+  if (!existing.length) return res.status(404).json({ error: 'Não encontrado' });
+  const entry = existing[0];
+  const historyEntry = { ts: new Date().toISOString(), before: entry.value, after: value || entry.value, desc_before: entry.description, reason: reason.trim(), user: user_name || null };
+  const { rows } = await Q('UPDATE cashflow_entries SET value=$1, description=$2, edit_history=$3 WHERE id=$4 AND user_id=$5 RETURNING *', [value || entry.value, description || entry.description, JSON.stringify([...(entry.edit_history || []), historyEntry]), req.params.id, req.userId]);
+  res.json(rows[0]);
+});
+
+app.get('/api/revenue-audit', auth, async (req, res) => {
+  const { rows } = await Q('SELECT * FROM revenue_audit WHERE user_id=$1 ORDER BY created_at ASC', [req.userId]);
+  res.json(rows);
+});
+app.post('/api/revenue-audit', auth, async (req, res) => {
+  const { before_val, after_val, reason } = req.body;
+  const { rows } = await Q('INSERT INTO revenue_audit(user_id,before_val,after_val,reason) VALUES($1,$2,$3,$4) RETURNING *', [req.userId, before_val ?? null, after_val, reason.trim()]);
+  res.status(201).json(rows[0]);
+});
+
+app.get('/api/reports/dashboard', auth, async (req, res) => {
+  const [rev, exp, salesCount, yearRev, auditAdj] = await Promise.all([
+    Q(`SELECT COALESCE(SUM(value),0) total FROM cashflow_entries WHERE user_id=$1 AND type='in' AND DATE_TRUNC('month',entry_date)=DATE_TRUNC('month',NOW())`, [req.userId]),
+    Q(`SELECT COALESCE(SUM(value),0) total FROM cashflow_entries WHERE user_id=$1 AND type='out' AND DATE_TRUNC('month',entry_date)=DATE_TRUNC('month',NOW())`, [req.userId]),
+    Q(`SELECT COUNT(*) count FROM sales WHERE user_id=$1 AND status='paid' AND DATE_TRUNC('month',sale_date)=DATE_TRUNC('month',NOW())`, [req.userId]),
+    Q(`SELECT COALESCE(SUM(total),0) total FROM sales WHERE user_id=$1 AND status='paid' AND EXTRACT(YEAR FROM sale_date)=EXTRACT(YEAR FROM NOW())`, [req.userId]),
+    Q(`SELECT COALESCE(SUM(after_val - COALESCE(before_val,0)),0) total FROM revenue_audit WHERE user_id=$1 AND EXTRACT(YEAR FROM created_at)=EXTRACT(YEAR FROM NOW())`, [req.userId]),
+  ]);
+  const BUSINESS_LIMITS = {
+    'MEI':        { limit: 81000,    label: 'Microempreendedor Individual (MEI)' },
+    'ME':         { limit: 360000,   label: 'Microempresa (ME)' },
+    'EPP':        { limit: 4800000,  label: 'Empresa de Pequeno Porte (EPP)' },
+    'SIMPLES':    { limit: 4800000,  label: 'Simples Nacional' },
+    'LTDA':       { limit: null,     label: 'Sociedade Limitada (LTDA)' },
+    'AUTONOMO':   { limit: null,     label: 'Profissional Autônomo' },
+    'OUTRO':      { limit: null,     label: 'Outro' },
+  };
+  const userType = req.userBusinessType || 'MEI';
+  const MEI_LIMIT = BUSINESS_LIMITS[userType]?.limit || 81000;
+  const yr = +yearRev.rows[0].total + +auditAdj.rows[0].total;
+  res.json({
+    month_revenue: +rev.rows[0].total, month_expenses: +exp.rows[0].total, month_profit: +rev.rows[0].total - +exp.rows[0].total,
+    sales_count: +salesCount.rows[0].count, year_revenue: yr, mei_limit: MEI_LIMIT, business_type: userType,
+    mei_pct: +(yr / MEI_LIMIT * 100).toFixed(2), mei_remaining: +(MEI_LIMIT - yr).toFixed(2)
+  });
+});
+
+app.get('/api/reports/annual', auth, async (req, res) => {
+  const year = req.query.year || new Date().getFullYear();
+  const { rows } = await Q(`SELECT TO_CHAR(DATE_TRUNC('month',entry_date),'YYYY-MM') AS month, SUM(CASE WHEN type='in' THEN value ELSE 0 END) AS total_in, SUM(CASE WHEN type='out' THEN value ELSE 0 END) AS total_out FROM cashflow_entries WHERE user_id=$1 AND EXTRACT(YEAR FROM entry_date)=$2 GROUP BY 1 ORDER BY 1`, [req.userId, year]);
+  res.json(rows);
+});
+
+// ══════════════════════════════════════════════════════════════
+// ADMIN — DADOS DE DEMONSTRAÇÃO (disponível apenas para a conta demo)
+// ══════════════════════════════════════════════════════════════
+const DEMO_EMAIL = (process.env.DEMO_EMAIL || 'demo@meifacil.com.br').toLowerCase();
+
+const demoOnly = async (req, res, next) => {
+  try {
+    const { rows } = await Q('SELECT email FROM users WHERE id=$1', [req.userId]);
+    if (!rows.length || rows[0].email.toLowerCase() !== DEMO_EMAIL) {
+      return res.status(403).json({ error: 'Disponível apenas para a conta demo' });
+    }
+    next();
+  } catch (e) { res.status(500).json({ error: 'Erro ao validar conta' }); }
+};
+
+const MS_CITIES = ['Campo Grande', 'Dourados', 'Três Lagoas', 'Corumbá', 'Ponta Porã', 'Naviraí', 'Aquidauana'];
+const FIRST_NAMES = ['Ana','Bruno','Carla','Diego','Elaine','Fábio','Gabriela','Henrique','Isabela','João','Karina','Lucas','Mariana','Nicolas','Otávio','Patrícia','Rafael','Sandra','Thiago','Vanessa'];
+const LAST_NAMES = ['Silva','Souza','Oliveira','Santos','Pereira','Costa','Rodrigues','Almeida','Nascimento','Lima','Araújo','Ribeiro','Carvalho','Gomes','Martins'];
+const rnd = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
+const pick = (arr) => arr[rnd(0, arr.length - 1)];
+
+function fakeCPF() {
+  const n = Array.from({ length: 9 }, () => rnd(0, 9));
+  const digit = (nums) => { let s = 0, f = nums.length + 1; for (const d of nums) s += d * f--; const r = (s * 10) % 11; return r === 10 ? 0 : r; };
+  const d1 = digit(n), d2 = digit([...n, d1]);
+  const all = [...n, d1, d2];
+  return `${all.slice(0,3).join('')}.${all.slice(3,6).join('')}.${all.slice(6,9).join('')}-${all.slice(9).join('')}`;
+}
+const fakePhoneMS = () => `(67) 9${rnd(6000,9999)}-${String(rnd(0,9999)).padStart(4,'0')}`;
+
+// Popula a conta demo com clientes, vendas e fluxo de caixa fictícios e realistas
+app.post('/api/admin/seed-demo', auth, demoOnly, async (req, res) => {
+  const client = await db.connect();
+  try {
+    const numClients   = Math.min(30, Math.max(1, +req.body.clients || 12));
+    const days          = Math.min(180, Math.max(1, +req.body.days || 45));
+    const salesPerDay   = Math.min(10, Math.max(1, +req.body.salesPerDay || 3));
+
+    await client.query('BEGIN');
+
+    let { rows: products } = await client.query('SELECT * FROM products WHERE user_id=$1 AND active=true', [req.userId]);
+    if (!products.length) {
+      const seedProducts = [
+        ['Coxinha de Frango','product','un',2.5,100,5.0,120],
+        ['Bolo de Chocolate','product','un',15,60,24.0,40],
+        ['Refrigerante Lata','product','un',3,60,4.8,150],
+        ['Suco de Laranja','product','un',2,150,5.0,100],
+        ['Pastel','product','un',3,90,5.7,120],
+        ['Bolo de Fuba','product','un',12,83,22.0,30],
+      ];
+      for (const [name,type,unit,cost,margin_pct,price,stock] of seedProducts) {
+        const { rows } = await client.query('INSERT INTO products(user_id,name,type,unit,cost,margin_pct,price,stock) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *', [req.userId,name,type,unit,cost,margin_pct,price,stock]);
+        products.push(rows[0]);
+      }
+    }
+
+    const newClients = [];
+    for (let i = 0; i < numClients; i++) {
+      const name = `${pick(FIRST_NAMES)} ${pick(LAST_NAMES)}`;
+      const { rows } = await client.query(
+        'INSERT INTO clients(user_id,name,cpf,phone,email,city) VALUES($1,$2,$3,$4,$5,$6) RETURNING *',
+        [req.userId, name, fakeCPF(), fakePhoneMS(), null, `${pick(MS_CITIES)} - MS`]
+      );
+      newClients.push(rows[0]);
+    }
+
+    const payMethods = [
+      { key: 'dinheiro', fee: 0 },
+      { key: 'pix',      fee: 0 },
+      { key: 'debito',   fee: 1.5 },
+      { key: 'credito',  fee: 2.99 },
+    ];
+    const despesas = ['Compra de insumos','Gás de cozinha','Embalagens','Conta de energia','Aluguel do ponto','Manutenção de equipamento'];
+
+    let salesCreated = 0;
+    const today = new Date();
+    for (let d = days - 1; d >= 0; d--) {
+      const day = new Date(today); day.setDate(day.getDate() - d);
+      const dateStr = day.toISOString().slice(0, 10);
+      const qtySales = rnd(Math.max(1, salesPerDay - 2), salesPerDay + 2);
+
+      for (let s = 0; s < qtySales; s++) {
+        const items = [];
+        for (let k = 0; k < rnd(1, 3); k++) {
+          const p = pick(products);
+          items.push({ product_id: p.id, product_name: p.name, qty: rnd(1, 4), unit_price: +p.price, cost: +p.cost });
+        }
+        const total = items.reduce((a, i) => a + i.qty * i.unit_price, 0);
+        const profit = items.reduce((a, i) => a + (i.qty * i.unit_price - i.qty * i.cost), 0);
+        const method = pick(payMethods);
+        const feeValue = +(total * method.fee / 100).toFixed(2);
+        const netTotal = +(total - feeValue).toFixed(2);
+        const status = Math.random() < 0.92 ? 'paid' : 'pending';
+        const clientRow = Math.random() < 0.75 ? pick(newClients) : null;
+        const time = `${String(rnd(8,20)).padStart(2,'0')}:${String(rnd(0,59)).padStart(2,'0')}`;
+
+        const { rows: saleRows } = await client.query(
+          `INSERT INTO sales(user_id,client_id,client_name,total,profit,status,pay_method,fee_pct,fee_value,net_total,sale_date,sale_time,paid_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
+          [req.userId, clientRow ? clientRow.id : null, clientRow ? clientRow.name : 'Cliente avulso', total, profit, status, method.key, method.fee, feeValue, netTotal, dateStr, time, status === 'paid' ? day : null]
+        );
+        const sale = saleRows[0];
+        for (const it of items) {
+          await client.query(
+            `INSERT INTO sale_items(sale_id,user_id,product_id,product_name,qty,unit_price,cost,subtotal) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,
+            [sale.id, req.userId, it.product_id, it.product_name, it.qty, it.unit_price, it.cost, +(it.qty * it.unit_price).toFixed(2)]
+          );
+          await client.query(`UPDATE products SET stock = GREATEST(0, COALESCE(stock,0) - $1) WHERE id=$2 AND user_id=$3 AND type='product' AND stock IS NOT NULL`, [it.qty, it.product_id, req.userId]);
+        }
+        if (status === 'paid') {
+          await client.query(`INSERT INTO cashflow_entries(user_id,description,type,value,entry_date,sale_id) VALUES($1,$2,'in',$3,$4,$5)`,
+            [req.userId, `Venda — ${items.map(i => `${i.qty}x ${i.product_name}`).join(', ')}`, netTotal, dateStr, sale.id]);
+        }
+        salesCreated++;
+      }
+
+      if (d % 4 === 0) {
+        await client.query(`INSERT INTO cashflow_entries(user_id,description,type,value,entry_date) VALUES($1,$2,'out',$3,$4)`,
+          [req.userId, pick(despesas), rnd(40, 300), dateStr]);
+      }
+    }
+
+    await client.query('COMMIT');
+    res.json({ success: true, clients_created: newClients.length, sales_created: salesCreated });
+  } catch (e) {
+    await client.query('ROLLBACK');
+    console.error(e);
+    res.status(500).json({ error: 'Erro ao gerar dados de demonstração' });
+  } finally { client.release(); }
+});
+
+// Remove todos os clientes, vendas e lançamentos de caixa da conta demo
+app.post('/api/admin/reset-demo', auth, demoOnly, async (req, res) => {
+  const client = await db.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('DELETE FROM cashflow_entries WHERE user_id=$1', [req.userId]);
+    await client.query('DELETE FROM sale_items WHERE user_id=$1', [req.userId]);
+    await client.query('DELETE FROM sales WHERE user_id=$1', [req.userId]);
+    await client.query('DELETE FROM clients WHERE user_id=$1', [req.userId]);
+    await client.query('DELETE FROM revenue_audit WHERE user_id=$1', [req.userId]);
+    await client.query('COMMIT');
+    res.json({ success: true });
+  } catch (e) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: 'Erro ao limpar dados demo' });
+  } finally { client.release(); }
+});
+
+// ── Health & Fallback ──────────────────────────────────────────
+app.get('/api/health', (_, res) => res.json({ status:'ok', ts: new Date().toISOString() }));
+
+// ── Parser local de texto de estoque (rápido, sem custo de IA) ──
+function normalizeParseText(s){
+  return (s||'').toString().normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
+}
+
+// Remove cabeçalhos de mensagem de WhatsApp tipo "[09/07, 13:38] Rafael: "
+function stripWhatsappHeaders(text){
+  return text.split('\n').map(line =>
+    line.replace(/^\s*\[\d{1,2}\/\d{1,2}(?:\/\d{2,4})?,?\s*\d{1,2}:\d{2}\]\s*[^:]{1,60}:\s*/, '')
+  ).join('\n');
+}
+
+// Tenta casar o nome extraído com um produto (ou variação de produto) já cadastrado
+function matchExistingProduct(name, existingProducts){
+  const n = normalizeParseText(name);
+  if(!n) return { id: null, name: null };
+  for(const p of existingProducts){
+    if(normalizeParseText(p.name) === n) return { id: p.id, name: p.name };
+  }
+  for(const p of existingProducts){
+    for(const v of (p.variations||[])){
+      if(normalizeParseText(v) === n) return { id: p.id, name: `${p.name} — ${v}` };
+    }
+  }
+  let best = null, bestLen = 0;
+  for(const p of existingProducts){
+    const pn = normalizeParseText(p.name);
+    if(pn.length>=3 && (n.includes(pn) || pn.includes(n)) && pn.length > bestLen){ best = p; bestLen = pn.length; }
+  }
+  return best ? { id: best.id, name: best.name } : { id: null, name: null };
+}
+
+// Formato rotulado: "produto: 30 unidades, custo R$3, preço R$8"
+function parseLabeledLine(line, existingProducts){
+  if(!/custo|pre[çc]o/i.test(line)) return null;
+  const m = line.match(/^(.+?)[:\-]\s*(\d+)\s*(?:un(?:idades?)?)?[,;]?\s*(?:custo\s*[:\-]?\s*R?\$?\s*(\d+(?:[.,]\d{1,2})?))?[,;]?\s*(?:pre[çc]o\s*[:\-]?\s*R?\$?\s*(\d+(?:[.,]\d{1,2})?))?/i);
+  if(!m) return null;
+  const name = m[1].trim();
+  const match = matchExistingProduct(name, existingProducts);
+  return {
+    name: match.name || name, variationName: null,
+    qty: parseInt(m[2])||0,
+    cost: m[3] ? parseFloat(m[3].replace(',','.')) : null,
+    price: m[4] ? parseFloat(m[4].replace(',','.')) : null,
+    matchedProductId: match.id, matchedProductName: match.name,
+  };
+}
+
+// Formato "Nome- Xun[ de PREÇO][ e Yun de PREÇO2]..." — inclusive várias entradas seguidas sem quebra de linha
+function localParseStockText(text, existingProducts = []){
+  const cleaned = stripWhatsappHeaders(text || '');
+  const items = [];
+  const remainingLines = [];
+
+  cleaned.split('\n').forEach(line=>{
+    const l = line.trim();
+    if(!l) return;
+    const labeled = parseLabeledLine(l, existingProducts);
+    if(labeled) items.push(labeled);
+    else remainingLines.push(l);
+  });
+
+  const rest = remainingLines.join('\n');
+  const entryRegex = /([^\n\-][^\-\n]*?)-\s*(\d+\s*(?:un\b)?\s*(?:de\s*\d+(?:[.,]\d{1,2})?)?(?:\s*(?:e|ou|\/|,)\s*\d+\s*(?:un\b)?\s*(?:de\s*\d+(?:[.,]\d{1,2})?)?)*)/gi;
+  let match;
+  while((match = entryRegex.exec(rest)) !== null){
+    const rawName = match[1].replace(/\s+/g,' ').trim();
+    const qtyExpr = match[2];
+    if(!rawName) continue;
+
+    const clauseRegex = /(\d+)\s*(?:un\b)?\s*(?:de\s*(\d+(?:[.,]\d{1,2})?))?/gi;
+    let clauseMatch; const clauses=[];
+    while((clauseMatch = clauseRegex.exec(qtyExpr)) !== null){
+      clauses.push({ qty: parseInt(clauseMatch[1])||0, price: clauseMatch[2] ? parseFloat(clauseMatch[2].replace(',','.')) : null });
+    }
+    if(!clauses.length) continue;
+
+    const matched = matchExistingProduct(rawName, existingProducts);
+    clauses.forEach(c=>{
+      items.push({
+        name: matched.name || rawName, variationName: null,
+        qty: c.qty, cost: null, price: c.price,
+        matchedProductId: matched.id, matchedProductName: matched.name,
+      });
+    });
+  }
+
+  // 3) Linhas isoladas sem hífen, tipo "refrigerante 12un" ou "coxinha 30 unidades"
+  remainingLines.forEach(l=>{
+    if(l.includes('-')) return; // já tentado no passo 2
+    const m = l.match(/^(.+?)\s+(\d+)\s*(?:un(?:idades?)?)?\s*$/i);
+    if(!m) return;
+    const rawName = m[1].trim();
+    const matched = matchExistingProduct(rawName, existingProducts);
+    items.push({
+      name: matched.name || rawName, variationName: null,
+      qty: parseInt(m[2])||0, cost: null, price: null,
+      matchedProductId: matched.id, matchedProductName: matched.name,
+    });
+  });
+
+  return items;
+}
+
+
+app.post('/api/ai/interpret-stock', auth, async (req, res) => {
+  const { text, existingProducts = [] } = req.body;
+  if (!text || !text.trim()) return res.status(400).json({ error: 'Texto não informado' });
+
+  // 1) Parser local primeiro — instantâneo e sem custo de IA
+  let localItems = [];
+  try { localItems = localParseStockText(text, existingProducts); } catch (e) { console.error('local parse error:', e); }
+
+  if (localItems.length > 0) {
+    return res.json({ items: localItems, method: 'local' });
+  }
+
+  // 2) Texto não estruturado / parser local não reconheceu nada — usa IA como fallback
+  const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY;
+  if (!ANTHROPIC_KEY) return res.status(503).json({ error: 'Não consegui interpretar o texto automaticamente, e a IA de apoio não está configurada no servidor' });
+
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': ANTHROPIC_KEY,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 1500,
+        system: `Você é um assistente especialista em interpretação de listas de estoque para um sistema de gestão MEI brasileiro.
+Responda APENAS com JSON válido (array), sem texto extra, sem markdown, sem explicação.
+Estrutura de cada item:
+{
+  "name": "nome do produto (sem a variação)",
+  "variationName": "nome da variação ou null",
+  "qty": número inteiro (0 se não informado),
+  "price": número decimal ou null,
+  "cost": número decimal ou null,
+  "matchedProductId": "id do produto existente ou null",
+  "matchedProductName": "nome do produto existente ou null"
+}
+Produtos existentes: ${JSON.stringify(existingProducts)}
+Tente sempre encontrar correspondência com produtos existentes (match parcial/abreviado).
+Exemplos: "S25 Ultra- 9un" pode ser variação "S25 Ultra" de um produto "Capinha Samsung".
+Se houver preço como "2un de 250", interprete como qty=2, price=250.`,
+        messages: [{ role: 'user', content: `Interprete este estoque:\n\n${text}` }]
+      })
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      console.error('Anthropic error:', data);
+      return res.status(502).json({ error: 'Erro na API de IA: ' + (data.error?.message || 'desconhecido') });
+    }
+
+    const raw = data.content?.[0]?.text || '[]';
+    let items = [];
+    try {
+      items = JSON.parse(raw);
+    } catch {
+      const match = raw.match(/\[[\s\S]*\]/);
+      if (match) items = JSON.parse(match[0]);
+    }
+
+    res.json({ items, method: 'ai' });
+  } catch (e) {
+    console.error('interpret-stock error:', e);
+    res.status(500).json({ error: 'Erro ao processar o texto com IA' });
+  }
+});
+
+app.get('*', (_, res) => res.sendFile(path.join(__dirname, 'index.html')));
+
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).json({ error: 'Erro interno no servidor' });
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`\n🏪 MEI Fácil rodando na porta ${PORT}\n`));
+
