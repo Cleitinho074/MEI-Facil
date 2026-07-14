@@ -1620,7 +1620,7 @@ function renderSaleRows(){
     <div class="sale-item-row">
       <span style="font-weight:600;font-size:13px">${item.name}</span>
       <input type="number" min="1" value="${item.qty}" style="width:60px;padding:4px 8px;font-size:13px" oninput="updateItemQty(${idx},this.value)"/>
-      <span style="font-size:13px">${R(item.unitPrice)}</span>
+      <input type="number" min="0" step="0.01" value="${item.unitPrice}" style="width:100%;padding:4px 6px;font-size:13px" oninput="updateItemPrice(${idx},this.value)" title="Editar preço (ex: desconto)"/>
       <span class="item-subtotal">${R(item.subtotal)}</span>
       <button class="remove-item-btn" onclick="removeSaleItem(${idx})">×</button>
     </div>`).join('');
@@ -1659,6 +1659,24 @@ function updateItemQty(idx,val){
   if(rows[idx]){
     const subtotalSpan=rows[idx].querySelector('.item-subtotal');
     if(subtotalSpan) subtotalSpan.textContent=R(item.subtotal);
+  }
+
+  updateSaleSummary();
+}
+
+function updateItemPrice(idx,val){
+  const price = Math.max(0, parseFloat(val)||0);
+  const item = saleItems[idx];
+  if(!item) return;
+
+  item.unitPrice = price;
+  item.subtotal = +(item.qty * price).toFixed(2);
+
+  // Atualiza o subtotal direto na linha sem re-renderizar tudo (senão o input perde o foco)
+  const rows = document.querySelectorAll('#sale-rows .sale-item-row');
+  if(rows[idx]){
+    const subtotalSpan = rows[idx].querySelector('.item-subtotal');
+    if(subtotalSpan) subtotalSpan.textContent = R(item.subtotal);
   }
 
   updateSaleSummary();
