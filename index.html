@@ -392,6 +392,7 @@ const state = {
   payFees: { pix:0, debito:1.5, credito:2.99 },
   clients: [],
   products: [],
+  productSearch: '',
   sales: [],
   cashflow: [],
   employees: [],
@@ -674,7 +675,11 @@ function renderDashboard(el){
   const totalProfit=paidSales.reduce((a,s)=>a+s.profit,0);
   const totalOut=state.cashflow.filter(c=>c.type==='out').reduce((a,c)=>a+c.value,0);
   const totalIn=state.cashflow.filter(c=>c.type==='in').reduce((a,c)=>a+c.value,0);
-  const LIMIT = currentLimit();
+  const pdfLimit = (() => {
+    const l = getBusinessLimit(state.businessType||'MEI');
+    return (l === null || l === undefined) ? null : l;
+  })();
+  const LIMIT = pdfLimit !== null ? pdfLimit : MEI_LIMIT; // fallback só pra cálculos internos
   const pct=Math.min(100,(state.yearRevenue/LIMIT)*100);
   const remaining=LIMIT-state.yearRevenue;
   const alertClass=pct>=90?'danger':pct>=75?'warning':'';
@@ -844,7 +849,10 @@ function renderEmployees(el){
   el.innerHTML=`
     <div class="section-header">
       <span class="section-title">🧑‍💼 Funcionários (${state.employees.length})</span>
-      <button class="btn btn-primary btn-sm" onclick="openEmployeeModal()">+ Novo Funcionário</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-ghost btn-sm" onclick="openSalaryCalc()" title="Calculadora de salário com impostos">🧮 Calcular Salário</button>
+        <button class="btn btn-primary btn-sm" onclick="openEmployeeModal()">+ Novo Funcionário</button>
+      </div>
     </div>
     ${renderPaymentReminders()}
     <div class="table-wrap">
@@ -1016,10 +1024,22 @@ async function deleteClientAsync(id){
 // PRODUCTS (with stock & variations)
 // ══════════════════════════════════════
 function renderProducts(el){
+  const search = (state.productSearch||'').toLowerCase().trim();
+  const filtered = search
+    ? state.products.filter(p => {
+        if(p.name.toLowerCase().includes(search)) return true;
+        if((p.type==='service'?'serviço':'produto').includes(search)) return true;
+        if(p.variations && p.variations.some(v=>v.name.toLowerCase().includes(search))) return true;
+        return false;
+      })
+    : state.products;
   el.innerHTML=`
     <div class="section-header">
-      <span class="section-title">📦 Produtos & Serviços (${state.products.length})</span>
-      <div style="display:flex;gap:8px">
+      <span class="section-title">📦 Produtos & Serviços (${filtered.length}/${state.products.length})</span>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input id="product-search-input" value="${state.productSearch||''}"
+          placeholder="🔍 Buscar produto..." style="padding:6px 12px;border:1.5px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-size:13px;width:180px"
+          oninput="state.productSearch=this.value;renderProducts(document.getElementById('content'))"/>
         <button class="btn btn-ghost btn-sm" onclick="openImportStockModal()" title="Importar estoque colando um texto">📋 Importar por Texto</button>
         <button class="btn btn-primary btn-sm" onclick="openProductModal()">+ Novo Item</button>
       </div>
@@ -1028,7 +1048,7 @@ function renderProducts(el){
       <table>
         <thead><tr><th>Nome</th><th>Tipo</th><th>Custo base</th><th>Margem</th><th>Preço base</th><th>Variações</th><th>Estoque</th><th>Ações</th></tr></thead>
         <tbody>
-          ${state.products.map(p=>`<tr>
+          ${filtered.map(p=>`<tr>
             <td><strong>${p.name}</strong></td>
             <td><span class="badge ${p.type==='service'?'badge-blue':'badge-green'}">${p.type==='service'?'Serviço':'Produto'}</span></td>
             <td>${R(p.cost)}</td>
@@ -2771,15 +2791,20 @@ function gerarPDF(){
   if(tipo==='mei'){
     const proj = (state.yearRevenue/meses)*12;
     seccoes += `
-      <h2 class="abnt-first-section">1 SITUAÇÃO DO ENQUADRAMENTO MEI</h2>
+      <h2 class="abnt-first-section">1 SITUAÇÃO DO ENQUADRAMENTO — ${getBusinessLabel(state.businessType||'MEI').toUpperCase()}</h2>
       <table>
         <tr><th>Indicador</th><th>Valor</th></tr>
+        <tr><td>Tipo de empresa</td><td>${getBusinessLabel(state.businessType||'MEI')}</td></tr>
         <tr><td>Faturamento Acumulado no Ano</td><td>${R(state.yearRevenue)}</td></tr>
-        <tr><td>Limite Anual MEI</td><td>${R(LIMIT)}</td></tr>
-        <tr><td>Percentual Utilizado</td><td>${pctMEI}%</td></tr>
-        <tr><td>Saldo Disponível</td><td>${R(LIMIT-state.yearRevenue)}</td></tr>
-        <tr><td>Projeção Anual (com base nos meses decorridos)</td><td>${R(proj)}</td></tr>
-        <tr><td>Situação</td><td>${proj>LIMIT?'⚠️ RISCO DE DESENQUADRAMENTO':'✅ DENTRO DO LIMITE'}</td></tr>
+        ${pdfLimit!==null
+          ? `<tr><td>Limite Anual (${getBusinessLabel(state.businessType||'MEI')})</td><td>${R(pdfLimit)}</td></tr>
+             <tr><td>Percentual Utilizado</td><td>${pctMEI}%</td></tr>
+             <tr><td>Saldo Disponível</td><td>${R(pdfLimit-state.yearRevenue)}</td></tr>
+             <tr><td>Projeção Anual (base ${meses} meses)</td><td>${R(proj)}</td></tr>
+             <tr><td>Situação</td><td>${proj>pdfLimit?'⚠️ RISCO DE DESENQUADRAMENTO':'✅ DENTRO DO LIMITE'}</td></tr>`
+          : `<tr><td>Limite de Faturamento</td><td>Não se aplica (tipo sem teto)</td></tr>
+             <tr><td>Projeção Anual (base ${meses} meses)</td><td>${R(proj)}</td></tr>`
+        }
       </table>
       <h2 class="abnt-section">2 FATURAMENTO POR MÊS</h2>
       <table>
@@ -2822,9 +2847,9 @@ function gerarPDF(){
         <tr><td>Despesas (mês)</td><td>${R(despesasMes)}</td></tr>
         <tr><td>Taxas de maquininha/gateway (mês)</td><td>${R(taxasMes)}</td></tr>
         <tr><td>Vendas pagas no mês</td><td>${paidSalesMes.length}</td></tr>
-        <tr><td>Faturamento acumulado no ano (MEI)</td><td>${R(state.yearRevenue)}</td></tr>
-        <tr><td>Limite anual MEI</td><td>${R(MEI_LIMIT)}</td></tr>
-        <tr><td>Percentual do limite utilizado</td><td>${pctMEI}%</td></tr>
+        <tr><td>Faturamento acumulado no ano (${getBusinessLabel(state.businessType||'MEI')})</td><td>${R(state.yearRevenue)}</td></tr>
+        ${pdfLimit!==null?`<tr><td>Limite anual (${getBusinessLabel(state.businessType||'MEI')})</td><td>${R(pdfLimit)}</td></tr>`:'<tr><td>Tipo sem limite de faturamento definido</td><td>—</td></tr>'}
+        ${pdfLimit!==null?`<tr><td>Percentual do limite utilizado</td><td>${pctMEI}%</td></tr>`:''}
       </table>
       <h3>Vendas por forma de pagamento (mês)</h3>
       <table>
@@ -3275,6 +3300,217 @@ function deleteNote(i){
   const listEl = document.getElementById('notes-list');
   if(listEl) listEl.innerHTML = renderNotesList(getNotes());
   toast('Nota excluída');
+}
+
+// ══════════════════════════════════════════════════════════════
+// CALCULADORA DE SALÁRIO COM IMPOSTOS (2026)
+// ══════════════════════════════════════════════════════════════
+
+// Tabelas INSS 2026 (progressiva)
+const INSS_TABLE_2026 = [
+  { teto: 1518.00,  aliq: 0.075 },
+  { teto: 2793.88,  aliq: 0.09  },
+  { teto: 4190.83,  aliq: 0.12  },
+  { teto: 8157.41,  aliq: 0.14  },
+];
+// IRRF 2026
+const IRRF_TABLE_2026 = [
+  { teto: 2428.80,  aliq: 0,     deducao: 0       },
+  { teto: 2826.65,  aliq: 0.075, deducao: 182.16  },
+  { teto: 3751.05,  aliq: 0.15,  deducao: 394.16  },
+  { teto: 4664.68,  aliq: 0.225, deducao: 675.49  },
+  { teto: Infinity, aliq: 0.275, deducao: 908.73  },
+];
+const DEDUCAO_DEPENDENTE_IRRF = 189.59;
+const SALARIO_MINIMO_2026 = 1518.00;
+const FGTS_ALIQ = 0.08;
+
+function calcINSS(salarioBruto){
+  // Cálculo progressivo por faixa
+  let inss = 0;
+  let base = salarioBruto;
+  let prev = 0;
+  for(const faixa of INSS_TABLE_2026){
+    if(base <= 0) break;
+    const teto = faixa.teto;
+    const tribut = Math.min(base, teto - prev);
+    inss += tribut * faixa.aliq;
+    prev = teto;
+    base -= tribut;
+    if(salarioBruto <= teto) break;
+  }
+  return +inss.toFixed(2);
+}
+
+function calcIRRF(baseCalculo, dependentes=0){
+  const baseComDeducoes = baseCalculo - dependentes * DEDUCAO_DEPENDENTE_IRRF;
+  if(baseComDeducoes <= 0) return 0;
+  for(const faixa of IRRF_TABLE_2026){
+    if(baseComDeducoes <= faixa.teto){
+      return +Math.max(0, baseComDeducoes * faixa.aliq - faixa.deducao).toFixed(2);
+    }
+  }
+  return 0;
+}
+
+// Encargos do empregador por tipo de empresa
+function getEncargosEmpregador(businessType){
+  const tipo = businessType || 'MEI';
+  // MEI: regra especial — pode ter 1 funcionário, paga só FGTS + INSS patronal simplificado
+  if(tipo === 'MEI'){
+    return {
+      inssPatronal: 0,       // MEI não paga INSS patronal (paga cota simplificada no DAS)
+      rat: 0,                // RAT não se aplica ao MEI
+      terceiros: 0,          // Sistema S não se aplica
+      fgts: FGTS_ALIQ,
+      obs: 'MEI pode ter 1 funcionário. FGTS de 8% obrigatório. INSS patronal incluído no DAS mensal.',
+    };
+  }
+  // ME, EPP, Simples Nacional
+  if(['ME','EPP','SIMPLES'].includes(tipo)){
+    return {
+      inssPatronal: 0,       // Simples Nacional isenta INSS patronal
+      rat: 0.01,             // RAT mínimo (Simples Nacional)
+      terceiros: 0,          // Sistema S não se aplica no Simples
+      fgts: FGTS_ALIQ,
+      obs: 'Optantes do Simples Nacional: INSS patronal e Sistema S incluídos no Simples. RAT pago separadamente.',
+    };
+  }
+  // Lucro Presumido / Real (LTDA, OUTRO)
+  return {
+    inssPatronal: 0.20,    // 20% INSS patronal
+    rat: 0.02,             // RAT médio 2% (varia por atividade)
+    terceiros: 0.058,      // Sistema S ~ 5,8%
+    fgts: FGTS_ALIQ,
+    obs: 'Lucro Presumido/Real: INSS 20%, RAT 1-3%, Sistema S ~5,8%, FGTS 8%.',
+  };
+}
+
+function openSalaryCalc(){
+  const bt = state.businessType || 'MEI';
+  const encargos = getEncargosEmpregador(bt);
+  openModal(`
+    <div class="modal-title">🧮 Calculadora de Salário — ${getBusinessLabel(bt)}</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+      <div class="form-group">
+        <label>Salário Bruto (R$)</label>
+        <input type="number" id="sc-bruto" value="${SALARIO_MINIMO_2026.toFixed(2)}" min="0" step="0.01" oninput="updateSalaryCalc()"/>
+      </div>
+      <div class="form-group">
+        <label>Dependentes (IRRF)</label>
+        <input type="number" id="sc-dep" value="0" min="0" max="20" oninput="updateSalaryCalc()"/>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Vale Transporte (R$)</label>
+      <input type="number" id="sc-vt" value="0" min="0" step="0.01" oninput="updateSalaryCalc()" placeholder="0 = não tem"/>
+    </div>
+    <div class="form-group">
+      <label>Vale Refeição (R$)</label>
+      <input type="number" id="sc-vr" value="0" min="0" step="0.01" oninput="updateSalaryCalc()" placeholder="0 = não tem"/>
+    </div>
+    <div id="salary-result" style="margin-top:8px"></div>
+    <div style="padding:10px 14px;background:var(--blue-x);border-radius:8px;font-size:12px;color:var(--muted);margin-top:12px">
+      ℹ️ ${encargos.obs}
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-ghost" onclick="_closeModal()">Fechar</button>
+    </div>
+  `, true);
+  setTimeout(updateSalaryCalc, 50);
+}
+
+function updateSalaryCalc(){
+  const bruto    = parseFloat(document.getElementById('sc-bruto')?.value) || 0;
+  const dep      = parseInt(document.getElementById('sc-dep')?.value)     || 0;
+  const vtBruto  = parseFloat(document.getElementById('sc-vt')?.value)    || 0;
+  const vrBruto  = parseFloat(document.getElementById('sc-vr')?.value)    || 0;
+
+  const bt = state.businessType || 'MEI';
+  const encargos = getEncargosEmpregador(bt);
+
+  // Descontos do funcionário
+  const inss    = calcINSS(bruto);
+  const vtDesc  = vtBruto > 0 ? +Math.min(vtBruto, bruto * 0.06).toFixed(2) : 0; // máx 6% do salário
+  const baseIRRF = bruto - inss - vtDesc;
+  const irrf    = calcIRRF(baseIRRF, dep);
+  const totalDesc = inss + irrf + vtDesc;
+  const liquido  = +(bruto - totalDesc).toFixed(2);
+
+  // Custo do empregador
+  const inssPatr = +(bruto * encargos.inssPatronal).toFixed(2);
+  const rat      = +(bruto * encargos.rat).toFixed(2);
+  const terc     = +(bruto * encargos.terceiros).toFixed(2);
+  const fgts     = +(bruto * encargos.fgts).toFixed(2);
+  const totalEnc = inssPatr + rat + terc + fgts;
+  const custoTotal = +(bruto + totalEnc + vrBruto).toFixed(2);
+
+  const el = document.getElementById('salary-result');
+  if(!el) return;
+
+  el.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <!-- COLUNA FUNCIONÁRIO -->
+      <div>
+        <div style="font-weight:700;font-size:13px;color:var(--text);margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--border)">
+          👤 Holerite do Funcionário
+        </div>
+        <div style="font-size:13px">
+          <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border)">
+            <span>Salário Bruto</span><strong>${R(bruto)}</strong>
+          </div>
+          <div style="display:flex;justify-content:space-between;padding:5px 0;color:var(--red-l)">
+            <span>(-) INSS ${((inss/bruto)*100||0).toFixed(1)}%</span><span>-${R(inss)}</span>
+          </div>
+          ${irrf>0?`<div style="display:flex;justify-content:space-between;padding:5px 0;color:var(--red-l)">
+            <span>(-) IRRF</span><span>-${R(irrf)}</span>
+          </div>`:''}
+          ${vtDesc>0?`<div style="display:flex;justify-content:space-between;padding:5px 0;color:var(--red-l)">
+            <span>(-) Desc. VT (6% máx)</span><span>-${R(vtDesc)}</span>
+          </div>`:''}
+          <div style="display:flex;justify-content:space-between;padding:8px 0;margin-top:4px;background:var(--green-x);border-radius:6px;padding:6px 10px;font-weight:700;color:var(--green-l)">
+            <span>💰 Salário Líquido</span><span>${R(liquido)}</span>
+          </div>
+        </div>
+      </div>
+      <!-- COLUNA EMPREGADOR -->
+      <div>
+        <div style="font-weight:700;font-size:13px;color:var(--text);margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--border)">
+          🏢 Custo para o Empregador
+        </div>
+        <div style="font-size:13px">
+          <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border)">
+            <span>Salário Bruto</span><strong>${R(bruto)}</strong>
+          </div>
+          ${inssPatr>0?`<div style="display:flex;justify-content:space-between;padding:5px 0;color:var(--amber)">
+            <span>(+) INSS Patronal 20%</span><span>+${R(inssPatr)}</span>
+          </div>`:'<div style="padding:5px 0;font-size:11px;color:var(--green-l)">✅ INSS patronal isento (${getBusinessLabel(bt)})</div>'}
+          ${rat>0?`<div style="display:flex;justify-content:space-between;padding:5px 0;color:var(--amber)">
+            <span>(+) RAT ${(encargos.rat*100).toFixed(0)}%</span><span>+${R(rat)}</span>
+          </div>`:''}
+          ${terc>0?`<div style="display:flex;justify-content:space-between;padding:5px 0;color:var(--amber)">
+            <span>(+) Sistema S ${(encargos.terceiros*100).toFixed(1)}%</span><span>+${R(terc)}</span>
+          </div>`:''}
+          <div style="display:flex;justify-content:space-between;padding:5px 0;color:var(--amber)">
+            <span>(+) FGTS 8%</span><span>+${R(fgts)}</span>
+          </div>
+          ${vrBruto>0?`<div style="display:flex;justify-content:space-between;padding:5px 0;color:var(--amber)">
+            <span>(+) Vale Refeição</span><span>+${R(vrBruto)}</span>
+          </div>`:''}
+          <div style="display:flex;justify-content:space-between;padding:6px 10px;margin-top:4px;background:var(--red-x);border-radius:6px;font-weight:700;color:var(--red-l)">
+            <span>💸 Custo Total Mensal</span><span>${R(custoTotal)}</span>
+          </div>
+          <div style="font-size:11px;color:var(--muted);margin-top:6px;text-align:center">
+            Encargos: ${R(totalEnc)} (${bruto>0?((totalEnc/bruto)*100).toFixed(1):0}% do salário bruto)
+          </div>
+        </div>
+      </div>
+    </div>
+    <div style="margin-top:12px;padding:10px 14px;background:var(--amber-x);border-radius:8px;font-size:12px">
+      ⚠️ <strong>13º Salário:</strong> Reserve ${R(bruto/12)}/mês • 
+      <strong>Férias (1/3):</strong> Reserve ${R(bruto*1.333/12)}/mês •
+      <strong>Custo real anual (com 13º+férias):</strong> ≈ ${R(custoTotal*14.33)}
+    </div>`;
 }
 
 function renderAdminSeed(el){
