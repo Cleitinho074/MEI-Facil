@@ -2226,7 +2226,11 @@ function printHolerite(employeeId){
     </div>`;
   const printEl = document.getElementById('abnt-print');
   printEl.innerHTML = html;
-  setTimeout(()=>{ window.print(); },200);
+  printEl.style.display = 'block';
+  setTimeout(()=>{
+    window.print();
+    setTimeout(()=>{ printEl.style.display = 'none'; }, 500);
+  }, 300);
 }
 function reportPagamentos(){
   const paid=state.sales.filter(s=>s.status==='paid');
@@ -3017,7 +3021,11 @@ function gerarPDF(){
 
   const printEl = document.getElementById('abnt-print');
   printEl.innerHTML = html;
-  setTimeout(()=>{ window.print(); },200);
+  printEl.style.display = 'block';
+  setTimeout(()=>{
+    window.print();
+    setTimeout(()=>{ printEl.style.display = 'none'; }, 500);
+  }, 300);
 }
 
 // ══════════════════════════════════════
@@ -3695,6 +3703,24 @@ function updateSalaryCalc(){
       <strong>Férias (1/3):</strong> Reserve ${R(bruto*1.333/12)}/mês •
       <strong>Custo real anual (com 13º+férias):</strong> ≈ ${R(custoTotal*14.33)}
     </div>`;
+}
+
+// Filtra produtos em tempo real sem re-renderizar o header/input
+function filterProductsLive(val){
+  state.productSearch = val;
+  const search = val.toLowerCase().trim();
+  const filtered = search
+    ? state.products.filter(p => {
+        if(p.name.toLowerCase().includes(search)) return true;
+        if(p.type === 'product' ? 'produto'.includes(search) : 'serviço'.includes(search)) return true;
+        if(p.variations && p.variations.some(v => v.name.toLowerCase().includes(search))) return true;
+        return false;
+      })
+    : state.products;
+  const tbody = document.getElementById('products-tbody');
+  const countEl = document.getElementById('products-count');
+  if(tbody) tbody.innerHTML = filtered.map(productRowHtml).join('');
+  if(countEl) countEl.textContent = `📦 Produtos & Serviços (${filtered.length}/${state.products.length})`;
 }
 
 function renderAdminSeed(el){
