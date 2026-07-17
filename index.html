@@ -280,7 +280,7 @@ input[type="checkbox"]{border-radius:4px}
       <div class="form-group"><label>E-mail</label><input type="email" id="login-email" placeholder="seu@email.com"/></div>
       <div class="form-group"><label>Senha</label><input type="password" id="login-pass" placeholder="••••••••"/></div>
       <button class="btn btn-primary auth-btn" onclick="doLogin()">Entrar na conta</button>
-      <p style="text-align:center;margin-top:14px;font-size:13px;color:var(--muted)"><a href="#" onclick="demoLogin()">🎯 Entrar com conta demo</a></p>
+      <p style="text-align:center;margin-top:14px;font-size:13px;color:var(--muted)"><a href="#" onclick="demoLogin()" style="color:var(--blue-l)">🎯 Experimentar sem cadastro (conta demo exclusiva)</a></p>
     </div>
     <div id="auth-register" style="display:none">
       <div class="form-group"><label>Nome completo</label><input type="text" id="reg-name" placeholder="João da Silva"/></div>
@@ -557,10 +557,32 @@ async function doRegister(){
   await loginSuccess(data.user);
 }
 
-function demoLogin(){
-  document.getElementById('login-email').value = 'demo@meifacil.com.br';
-  document.getElementById('login-pass').value  = 'demo12345';
-  toast('Credenciais demo preenchidas! Clique em Entrar.', 'success');
+async function demoLogin(){
+  const btn = document.querySelector('a[onclick="demoLogin()"]');
+  if(btn){ btn.textContent = '⏳ Iniciando...'; btn.style.pointerEvents='none'; }
+
+  // Recupera ou gera o device_token exclusivo deste aparelho
+  let deviceToken = localStorage.getItem('mei_device_token');
+
+  try {
+    const data = await apiCall(
+      '/api/auth/demo-session', 'POST',
+      { device_token: deviceToken || null },
+      false // não requer auth
+    );
+    if(!data){ throw new Error('Sem resposta'); }
+
+    // Salva o device_token para futuras visitas
+    if(data.device_token){
+      localStorage.setItem('mei_device_token', data.device_token);
+    }
+    // Salva o JWT e entra
+    localStorage.setItem('mei_jwt', data.token);
+    await loginSuccess(data.user);
+  } catch(e) {
+    toast('Erro ao iniciar conta demo. Tente novamente.', 'error');
+    if(btn){ btn.textContent = '🎯 Entrar com conta demo'; btn.style.pointerEvents=''; }
+  }
 }
 
 async function loginSuccess(user){
@@ -569,7 +591,7 @@ async function loginSuccess(user){
   document.getElementById('app').style.display = 'flex';
   document.getElementById('user-badge').textContent = (user.name||'U')[0].toUpperCase();
   updateTopbarDate();
-  const isDemo = (user.email||'').toLowerCase() === 'demo@meifacil.com.br';
+  const isDemo = user.is_demo === true;
   const adminNav = document.getElementById('nav-adminseed');
   if(adminNav) adminNav.style.display = isDemo ? 'flex' : 'none';
   await loadAllData();
@@ -3724,7 +3746,7 @@ function filterProductsLive(val){
 }
 
 function renderAdminSeed(el){
-  const isDemo = (state.user?.email||'').toLowerCase() === 'demo@meifacil.com.br';
+  const isDemo = state.user?.is_demo === true;
   if(!isDemo){
     el.innerHTML = `<div class="card" style="padding:40px;text-align:center;color:var(--muted)">🔒 Esta área é exclusiva da conta demo.</div>`;
     return;
