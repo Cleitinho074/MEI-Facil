@@ -192,6 +192,9 @@ input[type="checkbox"]{border-radius:4px}
 .auth-logo-icon{font-size:48px;display:block;margin-bottom:8px}
 .auth-logo-title{font-size:24px;font-weight:700;color:var(--blue)}
 .auth-logo-sub{font-size:13px;color:var(--muted)}
+.auth-logo-img-dark{display:none}
+[data-theme="dark"] .auth-logo-img-light{display:none}
+[data-theme="dark"] .auth-logo-img-dark{display:block}
 .auth-btn{width:100%;padding:12px;font-size:16px}
 
 .client-link{color:var(--blue-l);cursor:pointer;font-weight:700;border-bottom:1px dashed var(--blue-l);}
@@ -270,7 +273,8 @@ input[type="checkbox"]{border-radius:4px}
 <div id="auth-page" class="auth-page">
   <div class="auth-card">
     <div class="auth-logo">
-      <img src="/logo-blue.png" alt="MEI Fácil" style="height:40px;display:block;margin:0 auto 10px">
+      <img src="/logo-blue.png" alt="MEI Fácil" class="auth-logo-img-light" style="height:64px;display:block;margin:0 auto 12px">
+      <img src="/logo-white.png" alt="MEI Fácil" class="auth-logo-img-dark" style="height:64px;display:block;margin:0 auto 12px">
       <div class="auth-logo-sub">Gestão simples para o seu negócio</div>
     </div>
     <div id="auth-tab-bar" class="tabs" style="margin-bottom:24px">
