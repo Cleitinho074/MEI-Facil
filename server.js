@@ -9,20 +9,19 @@ const cors      = require('cors');
 const rateLimit = require('express-rate-limit');
 const bcrypt    = require('bcryptjs');
 const jwt       = require('jsonwebtoken');
+const crypto    = require('crypto');
 const { Pool }  = require('pg');
 const path      = require('path');
 
 const app = express();
 
-// Configuração do banco de dados (A Railway injeta a DATABASE_URL automaticamente)
 const db = new Pool({ 
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.DATABASE_URL && process.env.DATABASE_URL.includes('railway') 
-       ? false // Railway em rede interna geralmente não exige SSL estrito
+       ? false
        : (process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false) 
 });
 
-// ── Inicialização do Banco de Dados (Auto-Migration) ───────────
 const initDB = async () => {
   if (!process.env.DATABASE_URL) {
     console.log("⚠️ DATABASE_URL não configurada. Pulei a criação das tabelas.");
@@ -43,6 +42,8 @@ const initDB = async () => {
         razao_social VARCHAR(255),
         store_name VARCHAR(150),
         business_type VARCHAR(30) DEFAULT 'MEI',
+        is_demo BOOLEAN DEFAULT false,
+        device_token VARCHAR(64) UNIQUE,
         updated_at TIMESTAMP DEFAULT NOW(),
         created_at TIMESTAMP DEFAULT NOW()
       );
@@ -147,6 +148,8 @@ const initDB = async () => {
     // Migrações seguras para bancos já existentes
     await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS store_name VARCHAR(150);`);
     await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS business_type VARCHAR(30) DEFAULT 'MEI';`);
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_demo BOOLEAN DEFAULT false;`);
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS device_token VARCHAR(64) UNIQUE;`);
     await client.query(`ALTER TABLE sales ADD COLUMN IF NOT EXISTS sale_time VARCHAR(5);`);
     await client.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS variations JSONB DEFAULT '[]'::jsonb;`);
     await client.query(`ALTER TABLE sale_items ADD COLUMN IF NOT EXISTS variation_name VARCHAR(255);`);
@@ -166,6 +169,9 @@ const initDB = async () => {
     `);
     await client.query(`ALTER TABLE sales ADD COLUMN IF NOT EXISTS employee_id UUID REFERENCES employees(id) ON DELETE SET NULL;`);
     await client.query(`ALTER TABLE sales ADD COLUMN IF NOT EXISTS employee_name VARCHAR(255);`);
+    // Marca a antiga conta demo fixa (se existir) como is_demo=true, pra continuar funcionando com o novo sistema
+    const legacyDemoEmail = (process.env.DEMO_EMAIL || 'demo@meifacil.com.br').toLowerCase();
+    await client.query(`UPDATE users SET is_demo=true WHERE email=$1`, [legacyDemoEmail]);
     console.log("✅ Banco de dados inicializado e pronto para uso!");
   } catch (err) {
     console.error("❌ Erro ao criar as tabelas:", err);
@@ -191,7 +197,7 @@ app.use(helmet({
 }));
 app.use(cors({ origin: process.env.FRONTEND_URL || '*' }));
 app.use(express.json({ limit: '10kb' }));
-app.use('/api/auth', rateLimit({ windowMs: 15*60*1000, max: 20, message: { error:'Muitas tentativas. Aguarde.' }}));
+app.use('/api/auth', rateLimit({ windowMs: 15*60*1000, max: 30, message: { error:'Muitas tentativas. Aguarde.' }}));
 app.use('/api',      rateLimit({ windowMs: 15*60*1000, max: 300 }));
 app.use(express.static(path.join(__dirname)));
 
@@ -231,7 +237,7 @@ app.post('/api/auth/register', async (req, res) => {
 
     const hash = await bcrypt.hash(password, 12);
     const { rows } = await Q(
-      `INSERT INTO users(name,email,password_hash,cpf_cnpj,business_type) VALUES($1,$2,$3,$4,$5) RETURNING id,name,email,cpf_cnpj,razao_social,business_type,store_name`,
+      `INSERT INTO users(name,email,password_hash,cpf_cnpj,business_type) VALUES($1,$2,$3,$4,$5) RETURNING id,name,email,cpf_cnpj,razao_social,business_type,store_name,is_demo`,
       [name, email.toLowerCase(), hash, cpf_cnpj || null, business_type || 'MEI']
     );
     res.status(201).json({ token: signToken(rows[0].id, rows[0].business_type||'MEI'), user: rows[0] });
@@ -245,14 +251,45 @@ app.post('/api/auth/login', async (req, res) => {
     const { rows } = await Q('SELECT * FROM users WHERE email=$1', [email?.toLowerCase()]);
     if (!rows.length || !await bcrypt.compare(password, rows[0].password_hash))
       return res.status(401).json({ error: 'E-mail ou senha incorretos' });
-    const { password_hash, ...user } = rows[0];
+    const { password_hash, device_token, ...user } = rows[0];
     res.json({ token: signToken(user.id, user.business_type||'MEI'), user });
   } catch (e) { console.error(e); res.status(500).json({ error: 'Erro no login' }); }
 });
 
+// Sessão demo anônima — sem cadastro, uma conta vazia e exclusiva por dispositivo.
+// Envia device_token (se já tiver um salvo) para retomar a mesma conta demo; sem token, cria uma nova.
+app.post('/api/auth/demo-session', async (req, res) => {
+  try {
+    const { device_token } = req.body || {};
+
+    if (device_token) {
+      const { rows } = await Q('SELECT * FROM users WHERE device_token=$1 AND is_demo=true', [device_token]);
+      if (rows.length) {
+        const { password_hash, ...user } = rows[0];
+        return res.json({ token: signToken(user.id, user.business_type||'MEI'), user, device_token });
+      }
+      // token antigo não encontrado (ex: banco resetado) — cai para criar uma nova conta abaixo
+    }
+
+    const newDeviceToken = crypto.randomUUID();
+    const randomPass = crypto.randomBytes(24).toString('hex'); // nunca usada — login normal continua exigindo e-mail/senha reais
+    const hash = await bcrypt.hash(randomPass, 10);
+    const email = `demo-${newDeviceToken}@device.local`;
+
+    const { rows } = await Q(
+      `INSERT INTO users(name,email,password_hash,business_type,is_demo,device_token)
+       VALUES($1,$2,$3,$4,true,$5)
+       RETURNING id,name,email,cpf_cnpj,razao_social,store_name,business_type,is_demo`,
+      ['Visitante Demo', email, hash, 'MEI', newDeviceToken]
+    );
+    const user = rows[0];
+    res.status(201).json({ token: signToken(user.id, user.business_type||'MEI'), user, device_token: newDeviceToken });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Erro ao iniciar sessão demo' }); }
+});
+
 app.get('/api/auth/me', auth, async (req, res) => {
   try {
-    const { rows } = await Q('SELECT id, name, email, cpf_cnpj, razao_social, store_name, business_type FROM users WHERE id=$1', [req.userId]);
+    const { rows } = await Q('SELECT id, name, email, cpf_cnpj, razao_social, store_name, business_type, is_demo FROM users WHERE id=$1', [req.userId]);
     if (!rows.length) return res.status(404).json({ error: 'Usuário não encontrado' });
     res.json({ user: rows[0] });
   } catch (e) { res.status(500).json({ error: 'Erro ao buscar usuário' }); }
@@ -281,10 +318,9 @@ app.put('/api/auth/profile', auth, async (req, res) => {
     const { name, cpf_cnpj, razao_social, store_name, business_type } = req.body;
     if (!name || !name.trim()) return res.status(400).json({ error: 'Nome é obrigatório' });
     const { rows } = await Q(
-      `UPDATE users SET name=$1, cpf_cnpj=$2, razao_social=$3, store_name=$4, business_type=$5, updated_at=NOW() WHERE id=$6 RETURNING id, name, email, cpf_cnpj, razao_social, store_name, business_type`,
+      `UPDATE users SET name=$1, cpf_cnpj=$2, razao_social=$3, store_name=$4, business_type=$5, updated_at=NOW() WHERE id=$6 RETURNING id, name, email, cpf_cnpj, razao_social, store_name, business_type, is_demo`,
       [name.trim(), cpf_cnpj || null, razao_social || null, store_name || null, business_type || 'MEI', req.userId]
     );
-    // Retorna novo token com business_type atualizado para o frontend renovar
     const newToken = signToken(req.userId, rows[0].business_type || 'MEI');
     res.json({ user: rows[0], token: newToken });
   } catch (e) { res.status(500).json({ error: 'Erro ao atualizar perfil' }); }
@@ -335,7 +371,6 @@ app.put('/api/employees/:id', auth, async (req, res) => {
   rows.length ? res.json(rows[0]) : res.status(404).json({ error: 'Não encontrado' });
 });
 app.delete('/api/employees/:id', auth, async (req, res) => {
-  // Soft delete — preserva o histórico de vendas já vinculado ao funcionário
   await Q('UPDATE employees SET active=false WHERE id=$1 AND user_id=$2', [req.params.id, req.userId]);
   res.status(204).end();
 });
@@ -408,7 +443,6 @@ app.post('/api/sales', auth, async (req, res) => {
         const { rows: pRows } = await client.query(`SELECT stock, variations, type FROM products WHERE id=$1 AND user_id=$2`, [it.product_id, req.userId]);
         if (pRows.length && pRows[0].type === 'product') {
           if (it.variation_name) {
-            // Produto com variações: desconta do estoque da variação específica dentro do JSONB
             let vars = pRows[0].variations || [];
             const vIdx = vars.findIndex(v => v.name === it.variation_name);
             if (vIdx >= 0 && vars[vIdx].stock !== null && vars[vIdx].stock !== undefined) {
@@ -416,7 +450,6 @@ app.post('/api/sales', auth, async (req, res) => {
               await client.query(`UPDATE products SET variations=$1 WHERE id=$2 AND user_id=$3`, [JSON.stringify(vars), it.product_id, req.userId]);
             }
           } else if (pRows[0].stock !== null) {
-            // Produto simples, sem variações: desconta do estoque geral
             await client.query(`UPDATE products SET stock = GREATEST(0, COALESCE(stock,0) - $1) WHERE id=$2 AND user_id=$3`, [it.qty, it.product_id, req.userId]);
           }
         }
@@ -506,12 +539,13 @@ app.get('/api/reports/dashboard', auth, async (req, res) => {
     'OUTRO':      { limit: null,     label: 'Outro' },
   };
   const userType = req.userBusinessType || 'MEI';
-  const MEI_LIMIT = BUSINESS_LIMITS[userType]?.limit || 81000;
+  const limitInfo = BUSINESS_LIMITS[userType] || BUSINESS_LIMITS.MEI;
+  const LIMIT = limitInfo.limit; // pode ser null de propósito (LTDA/AUTÔNOMO/OUTRO não têm teto) — NUNCA usar "|| 81000" aqui
   const yr = +yearRev.rows[0].total + +auditAdj.rows[0].total;
   res.json({
     month_revenue: +rev.rows[0].total, month_expenses: +exp.rows[0].total, month_profit: +rev.rows[0].total - +exp.rows[0].total,
-    sales_count: +salesCount.rows[0].count, year_revenue: yr, mei_limit: MEI_LIMIT, business_type: userType,
-    mei_pct: +(yr / MEI_LIMIT * 100).toFixed(2), mei_remaining: +(MEI_LIMIT - yr).toFixed(2)
+    sales_count: +salesCount.rows[0].count, year_revenue: yr, mei_limit: LIMIT, business_type: userType, business_label: limitInfo.label,
+    mei_pct: LIMIT ? +(yr / LIMIT * 100).toFixed(2) : null, mei_remaining: LIMIT !== null ? +(LIMIT - yr).toFixed(2) : null
   });
 });
 
@@ -522,15 +556,13 @@ app.get('/api/reports/annual', auth, async (req, res) => {
 });
 
 // ══════════════════════════════════════════════════════════════
-// ADMIN — DADOS DE DEMONSTRAÇÃO (disponível apenas para a conta demo)
+// ADMIN — DADOS DE DEMONSTRAÇÃO (disponível para qualquer conta marcada como is_demo)
 // ══════════════════════════════════════════════════════════════
-const DEMO_EMAIL = (process.env.DEMO_EMAIL || 'demo@meifacil.com.br').toLowerCase();
-
 const demoOnly = async (req, res, next) => {
   try {
-    const { rows } = await Q('SELECT email FROM users WHERE id=$1', [req.userId]);
-    if (!rows.length || rows[0].email.toLowerCase() !== DEMO_EMAIL) {
-      return res.status(403).json({ error: 'Disponível apenas para a conta demo' });
+    const { rows } = await Q('SELECT is_demo FROM users WHERE id=$1', [req.userId]);
+    if (!rows.length || !rows[0].is_demo) {
+      return res.status(403).json({ error: 'Disponível apenas para contas demo' });
     }
     next();
   } catch (e) { res.status(500).json({ error: 'Erro ao validar conta' }); }
@@ -551,7 +583,6 @@ function fakeCPF() {
 }
 const fakePhoneMS = () => `(67) 9${rnd(6000,9999)}-${String(rnd(0,9999)).padStart(4,'0')}`;
 
-// Popula a conta demo com clientes, vendas e fluxo de caixa fictícios e realistas
 app.post('/api/admin/seed-demo', auth, demoOnly, async (req, res) => {
   const client = await db.connect();
   try {
@@ -651,7 +682,6 @@ app.post('/api/admin/seed-demo', auth, demoOnly, async (req, res) => {
   } finally { client.release(); }
 });
 
-// Remove todos os clientes, vendas e lançamentos de caixa da conta demo
 app.post('/api/admin/reset-demo', auth, demoOnly, async (req, res) => {
   const client = await db.connect();
   try {
@@ -660,6 +690,7 @@ app.post('/api/admin/reset-demo', auth, demoOnly, async (req, res) => {
     await client.query('DELETE FROM sale_items WHERE user_id=$1', [req.userId]);
     await client.query('DELETE FROM sales WHERE user_id=$1', [req.userId]);
     await client.query('DELETE FROM clients WHERE user_id=$1', [req.userId]);
+    await client.query('DELETE FROM employees WHERE user_id=$1', [req.userId]);
     await client.query('DELETE FROM revenue_audit WHERE user_id=$1', [req.userId]);
     await client.query('COMMIT');
     res.json({ success: true });
@@ -677,14 +708,12 @@ function normalizeParseText(s){
   return (s||'').toString().normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
 }
 
-// Remove cabeçalhos de mensagem de WhatsApp tipo "[09/07, 13:38] Rafael: "
 function stripWhatsappHeaders(text){
   return text.split('\n').map(line =>
     line.replace(/^\s*\[\d{1,2}\/\d{1,2}(?:\/\d{2,4})?,?\s*\d{1,2}:\d{2}\]\s*[^:]{1,60}:\s*/, '')
   ).join('\n');
 }
 
-// Tenta casar o nome extraído com um produto (ou variação de produto) já cadastrado
 function matchExistingProduct(name, existingProducts){
   const n = normalizeParseText(name);
   if(!n) return { id: null, name: null };
@@ -704,7 +733,6 @@ function matchExistingProduct(name, existingProducts){
   return best ? { id: best.id, name: best.name } : { id: null, name: null };
 }
 
-// Formato rotulado: "produto: 30 unidades, custo R$3, preço R$8"
 function parseLabeledLine(line, existingProducts){
   if(!/custo|pre[çc]o/i.test(line)) return null;
   const m = line.match(/^(.+?)[:\-]\s*(\d+)\s*(?:un(?:idades?)?)?[,;]?\s*(?:custo\s*[:\-]?\s*R?\$?\s*(\d+(?:[.,]\d{1,2})?))?[,;]?\s*(?:pre[çc]o\s*[:\-]?\s*R?\$?\s*(\d+(?:[.,]\d{1,2})?))?/i);
@@ -720,7 +748,6 @@ function parseLabeledLine(line, existingProducts){
   };
 }
 
-// Formato "Nome- Xun[ de PREÇO][ e Yun de PREÇO2]..." — inclusive várias entradas seguidas sem quebra de linha
 function localParseStockText(text, existingProducts = []){
   const cleaned = stripWhatsappHeaders(text || '');
   const items = [];
@@ -759,9 +786,8 @@ function localParseStockText(text, existingProducts = []){
     });
   }
 
-  // 3) Linhas isoladas sem hífen, tipo "refrigerante 12un" ou "coxinha 30 unidades"
   remainingLines.forEach(l=>{
-    if(l.includes('-')) return; // já tentado no passo 2
+    if(l.includes('-')) return;
     const m = l.match(/^(.+?)\s+(\d+)\s*(?:un(?:idades?)?)?\s*$/i);
     if(!m) return;
     const rawName = m[1].trim();
@@ -781,7 +807,6 @@ app.post('/api/ai/interpret-stock', auth, async (req, res) => {
   const { text, existingProducts = [] } = req.body;
   if (!text || !text.trim()) return res.status(400).json({ error: 'Texto não informado' });
 
-  // 1) Parser local primeiro — instantâneo e sem custo de IA
   let localItems = [];
   try { localItems = localParseStockText(text, existingProducts); } catch (e) { console.error('local parse error:', e); }
 
@@ -789,7 +814,6 @@ app.post('/api/ai/interpret-stock', auth, async (req, res) => {
     return res.json({ items: localItems, method: 'local' });
   }
 
-  // 2) Texto não estruturado / parser local não reconheceu nada — usa IA como fallback
   const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY;
   if (!ANTHROPIC_KEY) return res.status(503).json({ error: 'Não consegui interpretar o texto automaticamente, e a IA de apoio não está configurada no servidor' });
 
